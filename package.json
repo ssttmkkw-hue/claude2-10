@@ -1,0 +1,16 @@
+{
+  "name": "royal-arena",
+  "version": "3.0.0",
+  "description": "皇家竞技场：类皇室战争的卡牌对战游戏（支持在线自动匹配）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "license": "MIT"
+}
