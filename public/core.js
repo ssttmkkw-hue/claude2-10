@@ -30,6 +30,8 @@ const UD = {
   cannonB:  { name: '加农炮', hp: 850,  dmg: 200, hs: 0.9, spd: 0, range: 5.5, sight: 5.5, r: 0.7, tgt: 'ground', size: 1.0, mass: 999, building: true, life: 30, proj: 'cannon' },
   tomb:     { name: '墓碑',   hp: 450,  dmg: 0,   hs: 3.5, spd: 0, range: 0,   sight: 0,   r: 0.6, tgt: 'none',   size: 1.0, mass: 999, building: true, life: 40, spawn: 'skeleton', deathSpawn: 4 },
   inferno:  { name: '炼狱塔', hp: 1500, dmg: 25,  hs: 0.4, spd: 0, range: 6.0, sight: 6.0, r: 0.75, tgt: 'all',   size: 1.0, mass: 999, building: true, life: 40, ramp: true },
+  mortar:   { name: '迫击炮', hp: 1100, dmg: 230, hs: 5.0, spd: 0, range: 11.5, minRange: 3.0, sight: 11.5, r: 0.7, tgt: 'ground', size: 1.0, mass: 999, building: true, life: 30, proj: 'mortar', splash: 1.3 },
+  witch:    { name: '女巫',   hp: 720,  dmg: 110, hs: 1.1, spd: 1.0,  range: 5.0, sight: 5.5, r: 0.36, tgt: 'all',       size: 1.0,  mass: 4, proj: 'hex', splash: 1.0, spawnEvery: 7, spawnN: 3 },
 };
 
 const CD = {
@@ -55,6 +57,9 @@ const CD = {
   inferno:  { name: '炼狱塔',   cost: 5, unit: 'inferno', n: 1, rar: 'legendary' },
   zap:      { name: '电击术',   cost: 2, spell: 'zap', radius: 2.5, dmg: 160, tower: 0.35, stun: 0.5, rar: 'common' },
   freeze:   { name: '冰冻术',   cost: 4, spell: 'freeze', radius: 3, dmg: 90, tower: 0.35, stun: 4, rar: 'epic' },
+  rage:     { name: '狂暴术',   cost: 2, spell: 'rage', radius: 3, dur: 6, dmg: 0, tower: 0, boost: 1.35, rar: 'epic' },
+  mortar:   { name: '迫击炮',   cost: 4, unit: 'mortar', n: 1, rar: 'common' },
+  witch:    { name: '女巫',     cost: 5, unit: 'witch', n: 1, rar: 'epic' },
 };
 
 for (const k in CD) if (CD[k].unit) UD[CD[k].unit].value = CD[k].cost / CD[k].n;
@@ -110,7 +115,7 @@ function makeTower(p) {
 function newGame(diff, deck0, deck1, opts = {}) {
   const g = {
     state: 'countdown', cd: 3.5, time: 180, ot: false, dbl: false, el: [5, 5], crowns: [0, 0],
-    units: [], towers: [], projs: [], parts: [], decals: [], texts: [], banners: [], shake: 0,
+    units: [], towers: [], projs: [], parts: [], decals: [], texts: [], banners: [], zones: [], shake: 0,
     diff, hand: [[], []], queue: [[], []], ai: { t: 2.5 }, winner: -1, endT: 0, endDelay: 0, elapsed: 0, uid: 1, lastTick: 4,
     barShake: 0, decks: [deck0.slice(), deck1.slice()], pvp: !!opts.pvp,
   };
@@ -129,7 +134,7 @@ function makeUnit(type, team, x, y, delay) {
     delay, deploy: 1.0, deployMax: 1.0, spawnT: 0, landed: false,
     cd: d.building ? d.hs * 0.5 : d.hs * 0.5, target: null, retarget: 0, alive: true, face: team === 0 ? 1 : -1,
     walk: Math.random() * 6, atk: 0, flash: 0, attacking: false, moving: false, flap: Math.random() * 6,
-    stun: 0, frozen: 0, charging: false, chargeDist: 0, ramp: 0, ang: team ? Math.PI / 2 : -Math.PI / 2, spawnCd: 1.5,
+    stun: 0, frozen: 0, rage: 0, charging: false, chargeDist: 0, ramp: 0, ang: team ? Math.PI / 2 : -Math.PI / 2, spawnCd: 1.5,
   };
 }
 function formation(n) {
@@ -222,6 +227,12 @@ function castSpell(team, cd, x, y) {
     addP({ type: 'ring', x, y, life: 0.35, size: 0.4, grow: cd.radius * 2.5, color: '#bfe8ff' });
     for (let i = 0; i < 14; i++) addP({ type: 'spark', x: x + rnd(-cd.radius, cd.radius) * 0.7, y: y + rnd(-cd.radius, cd.radius) * 0.6, z: rnd(0, 1), vx: rnd(-2, 2), vy: rnd(-1, 1), vz: rnd(1, 3), g: 6, life: 0.35, size: 0.08 });
     G.shake = Math.max(G.shake, 0.3); sfx('zap');
+  } else if (cd.spell === 'rage') {
+    G.zones.push({ team, x, y, r: cd.radius, life: cd.dur, boost: cd.boost });
+    G.decals.push({ x, y, r: cd.radius, life: cd.dur, max: cd.dur, rage: true });
+    addP({ type: 'ring', x, y, life: 0.5, size: 0.4, grow: cd.radius * 2.2, color: '#e07bff' });
+    for (let i = 0; i < 18; i++) { const a = rnd(0, TAU), rr = Math.sqrt(Math.random()) * cd.radius; addP({ type: 'puff', x: x + Math.cos(a) * rr, y: y + Math.sin(a) * rr, z: 0.1, vz: rnd(0.5, 1.5), life: rnd(0.5, 0.9), size: rnd(0.12, 0.22), grow: 0.8, color: '#d66bff' }); }
+    sfx('rage');
   } else if (cd.spell === 'freeze') {
     areaDamage(team, x, y, cd.radius, cd.dmg, cd.tower);
     applyStun(team, x, y, cd.radius, cd.stun, true);
@@ -388,6 +399,11 @@ function update(dt) {
     if (!G.pvp) aiUpdate(dt);
   }
   G.elapsed += sim;
+  for (const z of G.zones) {
+    z.life -= sim;
+    for (const u of G.units) if (u.team === z.team && u.alive && Math.hypot(u.x - z.x, u.y - z.y) <= z.r + u.r) u.rage = 0.35;
+  }
+  G.zones = G.zones.filter(z => z.life > 0);
   const cur = G.units.slice();
   for (const u of cur) if (u.alive) updUnit(u, sim);
   separate(sim);
@@ -434,10 +450,19 @@ function updUnit(u, dt) {
   if (!u.landed) { u.spawnT += dt; if (u.spawnT >= 0.22) landFx(u); }
   if (u.d.building) { u.hp -= u.maxHp / u.d.life * dt; if (u.hp <= 0) { u.hp = 0; kill(u); return; } }
   if (u.stun > 0) { u.stun -= dt; u.moving = false; return; }
+  if (u.rage > 0) { u.rage -= dt; dt *= 1.35; if (Math.random() < 0.12) addP({ type: 'puff', x: u.x + rnd(-0.3, 0.3), y: u.y, z: rnd(0.3, 1), vz: 0.8, life: 0.4, size: 0.08, grow: 0.5, color: '#e07bff' }); }
   u.atk = Math.max(0, u.atk - dt * 2.8);
   u.flap += dt * (u.d.air ? 9 : 0);
   if (u.deploy > 0) { u.deploy -= dt; return; }
   if (u.d.building) { updBuilding(u, dt); return; }
+  if (u.d.spawnEvery) {
+    u.spawnCd -= dt;
+    if (u.spawnCd <= 0) {
+      u.spawnCd = u.d.spawnEvery;
+      spawnUnits('skeleton', u.team, u.x, u.y + (u.team ? 0.7 : -0.7), u.d.spawnN, true);
+      addP({ type: 'ring', x: u.x, y: u.y, life: 0.4, size: 0.3, grow: 2, color: '#b06bff' });
+    }
+  }
   u.retarget -= dt;
   let tg = u.target;
   if (tg && (!tg.alive || !canTarget(u.d.tgt, tg))) tg = u.target = null;
@@ -478,12 +503,12 @@ function updBuilding(u, dt) {
     return;
   }
   let tg = u.target;
-  if (tg && (!tg.alive || edgeDist(u, tg) > d.range + 0.3 || tg.delay > 0)) tg = null;
+  if (tg && (!tg.alive || edgeDist(u, tg) > d.range + 0.3 || tg.delay > 0 || (d.minRange && edgeDist(u, tg) < d.minRange - 0.3))) tg = null;
   if (!tg) {
     let bd = 1e9;
     for (const e of G.units) {
       if (e.team === u.team || !e.alive || e.delay > 0 || e.d.building || !canTarget(d.tgt, e)) continue;
-      const dd = edgeDist(u, e); if (dd <= d.range && dd < bd) { bd = dd; tg = e; }
+      const dd = edgeDist(u, e); if (dd <= d.range && dd < bd && !(d.minRange && dd < d.minRange)) { bd = dd; tg = e; }
     }
   }
   if (tg !== u.target) u.ramp = 0;
@@ -522,12 +547,12 @@ function attack(u, tg) {
   } else {
     const z0 = d.air ? 1.9 : d.building ? 0.8 : 0.65;
     const tz = tg.kind === 'tower' ? tg.h * 0.6 : (tg.d.air ? 1.8 : 0.45);
-    const spd = { arrow: 13, orb: 9, flame: 8, bullet: 22, bomb: 7, cannon: 11 }[d.proj] || 10;
+    const spd = { arrow: 13, orb: 9, flame: 8, bullet: 22, bomb: 7, cannon: 11, mortar: 5.5, hex: 9 }[d.proj] || 10;
     const dd = Math.max(0.2, dist(u, tg));
-    const arc = d.proj === 'arrow' ? dd * 0.12 : d.proj === 'bomb' ? 0.8 + dd * 0.25 : d.proj === 'cannon' ? dd * 0.06 : 0.15;
+    const arc = d.proj === 'arrow' ? dd * 0.12 : d.proj === 'bomb' ? 0.8 + dd * 0.25 : d.proj === 'mortar' ? 3 + dd * 0.25 : d.proj === 'cannon' ? dd * 0.06 : 0.15;
     const ox = d.building ? Math.cos(u.ang) * 0.6 : u.face * 0.25, oy = d.building ? Math.sin(u.ang) * 0.6 / SQ : 0;
-    G.projs.push(mkProj(d.proj, u.team, u.x + ox, u.y + oy, z0, tg.x, tg.y, tz, d.proj === 'bomb' ? null : tg, dd / spd, arc, { dmg: d.dmg, splash: d.splash || 0, air: d.tgt === 'all' }));
-    sfx({ arrow: 'arrow', bullet: 'shot', bomb: 'pop', cannon: 'cannon' }[d.proj] || 'orb');
+    G.projs.push(mkProj(d.proj, u.team, u.x + ox, u.y + oy, z0, tg.x, tg.y, tz, (d.proj === 'bomb' || d.proj === 'mortar') ? null : tg, dd / spd, arc, { dmg: d.dmg, splash: d.splash || 0, air: d.tgt === 'all' }));
+    sfx({ arrow: 'arrow', bullet: 'shot', bomb: 'pop', cannon: 'cannon', mortar: 'cannon' }[d.proj] || 'orb');
   }
 }
 function separate(dt) {
@@ -600,7 +625,8 @@ function updProj(p, dt) {
   if (p.kind === 'fireball' && Math.random() < 0.9) addP({ type: 'fire', x: p.x + rnd(-0.15, 0.15), y: p.y, z: p.z + rnd(-0.15, 0.15), vz: 0.3, life: 0.35, size: rnd(0.25, 0.4), grow: -0.6 });
   if (p.kind === 'orb' && Math.random() < 0.7) addP({ type: 'fire', x: p.x, y: p.y, z: p.z, life: 0.25, size: 0.16, grow: -0.8 });
   if (p.kind === 'flame') addP({ type: 'fire', x: p.x + rnd(-0.1, 0.1), y: p.y, z: p.z, life: 0.25, size: 0.22, grow: -0.5 });
-  if (p.kind === 'bomb' && Math.random() < 0.5) addP({ type: 'spark', x: p.x, y: p.y, z: p.z + 0.15, life: 0.15, size: 0.06 });
+  if (p.kind === 'hex' && Math.random() < 0.7) addP({ type: 'puff', x: p.x, y: p.y, z: p.z, life: 0.25, size: 0.12, grow: -0.5, color: '#c47bff' });
+  if ((p.kind === 'bomb' || p.kind === 'mortar') && Math.random() < 0.5) addP({ type: 'spark', x: p.x, y: p.y, z: p.z + 0.15, life: 0.15, size: 0.06 });
   if (k < 1) return;
   p.done = true;
   switch (p.kind) {
@@ -614,9 +640,15 @@ function updProj(p, dt) {
       for (let i = 0; i < 8; i++) addP({ type: 'fire', x: p.tx + rnd(-0.4, 0.4), y: p.ty + rnd(-0.3, 0.3), z: p.tz, vx: rnd(-1.5, 1.5), vy: rnd(-1, 1), vz: rnd(0, 1.5), life: rnd(0.25, 0.45), size: rnd(0.2, 0.35), grow: 0.5 });
       addP({ type: 'ring', x: p.tx, y: p.ty, z: p.tz > 1 ? p.tz : 0, life: 0.3, size: 0.3, grow: p.splash * 3, color: '#ffb347' });
       break;
-    case 'bomb':
+    case 'bomb': case 'mortar':
       areaDamage(p.team, p.tx, p.ty, p.splash, p.dmg, 1, false, true);
-      explodeFx(p.tx, p.ty, 0.1, p.splash, false); sfx('boomS');
+      explodeFx(p.tx, p.ty, 0.1, p.splash, p.kind === 'mortar'); sfx(p.kind === 'mortar' ? 'boom' : 'boomS');
+      if (p.kind === 'mortar') G.decals.push({ x: p.tx, y: p.ty, r: p.splash * 0.6, life: 2.5, max: 2.5 });
+      break;
+    case 'hex':
+      areaDamage(p.team, p.tx, p.ty, p.splash, p.dmg);
+      for (let i = 0; i < 6; i++) addP({ type: 'puff', x: p.tx + rnd(-0.4, 0.4), y: p.ty + rnd(-0.3, 0.3), z: p.tz, vx: rnd(-1, 1), vz: rnd(0.3, 1.2), life: 0.4, size: 0.18, grow: 0.8, color: '#b06bff' });
+      addP({ type: 'ring', x: p.tx, y: p.ty, z: p.tz > 1 ? p.tz : 0, life: 0.3, size: 0.3, grow: p.splash * 3, color: '#d08bff' });
       break;
     case 'dropbomb':
       if (p.splash > 0) areaDamage(p.team, p.tx, p.ty, p.splash, p.dmg, 1, false, true);
@@ -707,6 +739,8 @@ function aiUpdate(dt) {
         case 'cannonB': return air || !ground ? 0 : bldHunter ? 3.3 : tank ? 2.6 : 1.6;
         case 'tomb': return !ground ? 0 : bldHunter ? 2.8 : tank ? 2.2 : 1.4;
         case 'inferno': return swarm ? 0.3 : tank ? 3.8 : 1.8;
+        case 'witch': return swarm ? 2.6 : air ? 2.2 : tank ? 2.1 : 1.7;
+        case 'mortar': return air || !ground ? 0 : swarm ? 2.2 : f.y > 15 ? 1.8 : 0.8;
         default: return 0.1;
       }
     };
@@ -728,7 +762,8 @@ function aiUpdate(dt) {
   // 3) 进攻 - 支援已有坦克
   const tankU = G.units.find(u => u.team === 1 && u.alive && AI_TANKS.includes(u.type) && u.y > 6 && u.y < 22);
   if (tankU) {
-    for (const cid of ['wizard', 'musketeer', 'archers', 'bomber', 'goblins', 'bats', 'knight', 'dragon']) {
+    if (has('rage') && clusterValue(1, tankU.x, tankU.y, 3) >= 5 && G.towers.some(t => t.team === 0 && t.alive && dist(t, tankU) < 5)) { if (aiTryPlace('rage', tankU.x, tankU.y)) return; }
+    for (const cid of ['wizard', 'witch', 'musketeer', 'archers', 'bomber', 'goblins', 'bats', 'knight', 'dragon']) {
       if (has(cid) && el >= CD[cid].cost + 0.5) { if (aiTryPlace(cid, tankU.x, Math.min(tankU.y - 2, 14.5))) return; }
     }
     // 冰冻：坦克已经贴塔时冻结防御
@@ -759,7 +794,7 @@ function aiUpdate(dt) {
 //  网络同步编解码
 // =====================================================================
 const TYPES = Object.keys(UD), TI = Object.fromEntries(TYPES.map((t, i) => [t, i]));
-const PKINDS = ['arrow', 'varrow', 'cannon', 'orb', 'flame', 'fireball', 'arrowsWave', 'bullet', 'bomb', 'dropbomb'];
+const PKINDS = ['arrow', 'varrow', 'cannon', 'orb', 'flame', 'fireball', 'arrowsWave', 'bullet', 'bomb', 'dropbomb', 'mortar', 'hex'];
 const PKI = Object.fromEntries(PKINDS.map((t, i) => [t, i]));
 const r2 = v => Math.round(v * 100) / 100;
 const PDEF = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, g: 0, size: 0.2, grow: 0, color: '#fff', rot: 0, vr: 0 };
@@ -774,7 +809,7 @@ function packP(p) {
 function snapshot(g, sounds) {
   const fx = {
     p: g.parts.splice(0).map(packP),
-    d: g.decals.splice(0).map(d => ({ x: r2(d.x), y: r2(d.y), r: r2(d.r), life: r2(d.life), max: r2(d.max), ice: d.ice ? 1 : 0, arrow: d.arrow ? 1 : 0 })),
+    d: g.decals.splice(0).map(d => ({ x: r2(d.x), y: r2(d.y), r: r2(d.r), life: r2(d.life), max: r2(d.max), ice: d.ice ? 1 : 0, arrow: d.arrow ? 1 : 0, rage: d.rage ? 1 : 0 })),
     x: g.texts.splice(0).map(t => ({ x: r2(t.x), y: r2(t.y), life: t.life, max: t.max, kind: t.kind, v: t.v, team: t.team })),
     b: g.banners.splice(0).map(b => ({ text: b.text, sub: b.sub, color: b.color, dur: b.dur })),
     s: sounds || [],
@@ -786,7 +821,7 @@ function snapshot(g, sounds) {
     tw: g.towers.map(t => [Math.ceil(t.hp), t.alive ? 1 : 0, t.active ? 1 : 0, r2(t.aim), r2(t.recoil), r2(t.atk), t.face, t.target ? 1 : 0, r2(t.flash), r2(t.frozen), r2(t.stun)]),
     u: g.units.map(u => [u.id, TI[u.type], u.team, r2(u.x), r2(u.y), Math.ceil(u.hp), r2(Math.max(0, u.delay)), u.landed ? 1 : 0, r2(u.spawnT), u.face,
       u.moving ? 1 : 0, r2(u.atk), u.attacking ? 1 : 0, r2(u.flash), r2(u.frozen), r2(u.stun), u.charging ? 1 : 0, u.cd < 1 ? 1 : 0, r2(u.ramp), r2(u.ang),
-      r2(Math.max(0, u.deploy)), tid(u.target)]),
+      r2(Math.max(0, u.deploy)), tid(u.target), u.rage > 0 ? 1 : 0]),
     p: g.projs.filter(p => p.t >= 0 && p.kind !== 'arrowsWave').map(p => [p.id, PKI[p.kind], p.team, r2(p.x), r2(p.y), r2(p.z), r2(p.tx), r2(p.ty), r2(p.splash), r2(Math.min(1, p.t / p.dur))]),
     fx,
   };

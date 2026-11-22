@@ -34,6 +34,9 @@ const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
 let queue = [];
 const rooms = new Set();
 const lobbies = new Map();   // 房间号 → { code, members: [{ ws, here }], playing }
+const tokens = new Map();    // 重连凭证 → { room, team }
+const GRACE = 30;            // 掉线后保留席位的秒数
+const crypto = require('crypto');
 
 function send(ws, o) { if (ws && ws.readyState === 1) ws.send(typeof o === 'string' ? o : JSON.stringify(o)); }
 function cleanName(n) { n = String(n || '').replace(/[<>\n\r\t]/g, '').trim().slice(0, 12); return n || '玩家'; }
@@ -73,10 +76,12 @@ function detach(ws) { removeFromQueue(ws); if (ws.room) leaveRoom(ws, 'switch');
 
 function createRoom(players, lobby = null) {
   const g = Core.newGame('normal', players[0].deck, players[1].deck, { pvp: true });
-  const room = { g, players, sounds: [], endT: 0, lobby, id: Math.random().toString(36).slice(2, 8) };
+  const room = { g, players, names: players.map(p => p.name), sounds: [], endT: 0, lobby, offline: [0, 0], oldWs: [null, null], tokens: [], id: Math.random().toString(36).slice(2, 8) };
   players.forEach((ws, team) => {
-    ws.room = room; ws.team = team; ws.deployT = [];
-    send(ws, { t: 'start', team, opp: players[1 - team].name, hand: g.hand[team], next: g.queue[team][0], code: lobby ? lobby.code : null });
+    ws.room = room; ws.team = team; ws.deployT = []; ws.emoteT = 0;
+    const token = crypto.randomBytes(12).toString('hex');
+    room.tokens[team] = token; tokens.set(token, { room, team });
+    send(ws, { t: 'start', team, opp: players[1 - team].name, hand: g.hand[team], next: g.queue[team][0], code: lobby ? lobby.code : null, token });
   });
   rooms.add(room);
   console.log(`[room ${room.id}] ${players[0].name} vs ${players[1].name}`);
@@ -84,6 +89,8 @@ function createRoom(players, lobby = null) {
 
 function closeRoom(room) {
   rooms.delete(room);
+  for (const t of room.tokens) tokens.delete(t);
+  room.oldWs.forEach(o => { if (o) removeFromLobby(o); });
   if (room.lobby) { room.lobby.playing = false; if (lobbies.get(room.lobby.code) === room.lobby) lobbySync(room.lobby); }
   for (const ws of room.players) if (ws && ws.room === room) ws.room = null;
 }
@@ -102,6 +109,49 @@ function leaveRoom(ws, reason) {
   }
   room.players[ws.team] = null;
   if (!room.players[0] && !room.players[1]) closeRoom(room);
+}
+
+// 掉线：保留席位 GRACE 秒，对局继续进行
+function goOffline(ws) {
+  const room = ws.room, team = ws.team;
+  ws.room = null;
+  room.players[team] = null;
+  room.offline[team] = Date.now() + GRACE * 1000;
+  room.oldWs[team] = ws;
+  send(room.players[1 - team], { t: 'oppOffline', secs: GRACE });
+  console.log(`[room ${room.id}] ${ws.name} offline, waiting ${GRACE}s`);
+}
+function forfeitOffline(room, team) {
+  room.offline[team] = 0;
+  const g = room.g, other = 1 - team;
+  if (g.state !== 'end' && g.state !== 'ending') {
+    Core.setG(g); g.crowns[other] = 3; Core.endGame(other);
+    send(room.players[other], { t: 'oppLeft' });
+  }
+  const old = room.oldWs[team]; room.oldWs[team] = null;
+  if (old) removeFromLobby(old);
+  console.log(`[room ${room.id}] ${room.names[team]} did not return`);
+}
+function rejoin(ws, token) {
+  const entry = tokens.get(String(token || ''));
+  if (!entry || !rooms.has(entry.room)) { send(ws, { t: 'error', where: 'rejoin', msg: '对局已结束' }); return; }
+  const { room, team } = entry, g = room.g;
+  if (g.state === 'end') { send(ws, { t: 'error', where: 'rejoin', msg: '对局已结束' }); return; }
+  removeFromQueue(ws); if (ws.room && ws.room !== room) leaveRoom(ws, 'switch');
+  const prev = room.players[team] || room.oldWs[team];
+  if (prev && prev !== ws) {
+    if (prev.lobby && room.lobby && prev.lobby === room.lobby) {
+      const mem = room.lobby.members.find(x => x.ws === prev); if (mem) mem.ws = ws;
+      ws.lobby = room.lobby; prev.lobby = null;
+    }
+    prev.room = null;
+    if (room.players[team] === prev) { try { prev.terminate(); } catch (e) {} }
+  }
+  ws.room = room; ws.team = team; ws.name = room.names[team]; ws.deck = g.decks[team]; ws.deployT = []; ws.emoteT = 0;
+  room.players[team] = ws; room.offline[team] = 0; room.oldWs[team] = null;
+  send(ws, { t: 'start', team, opp: room.names[1 - team], hand: g.hand[team], next: g.queue[team][0], code: room.lobby ? room.lobby.code : null, token, rejoin: true });
+  send(room.players[1 - team], { t: 'oppBack' });
+  console.log(`[room ${room.id}] ${ws.name} rejoined`);
 }
 
 function handleDeploy(ws, m) {
@@ -186,9 +236,22 @@ wss.on('connection', ws => {
       }
       case 'leaveLobby': removeFromLobby(ws); break;
       case 'deploy': handleDeploy(ws, m); break;
+      case 'rejoin': rejoin(ws, m.token); break;
+      case 'emote': {
+        const room = ws.room; if (!room) return;
+        const now = Date.now(); if (now - ws.emoteT < 1500) return; ws.emoteT = now;
+        const e = m.e | 0; if (e < 0 || e > 5) return;
+        send(room.players[1 - ws.team], { t: 'emote', e });
+        break;
+      }
     }
   });
-  ws.on('close', () => { removeFromQueue(ws); leaveRoom(ws, 'disconnect'); removeFromLobby(ws); });
+  ws.on('close', () => {
+    removeFromQueue(ws);
+    const room = ws.room;
+    if (room && room.g.state !== 'end' && room.g.state !== 'ending' && room.players[1 - ws.team]) { goOffline(ws); return; }
+    leaveRoom(ws, 'disconnect'); removeFromLobby(ws);
+  });
 });
 
 // 心跳：清理掉线连接
@@ -215,6 +278,7 @@ setInterval(() => {
       snap.h = g.hand[team]; snap.q = g.queue[team][0];
       send(ws, JSON.stringify(snap));
     });
+    for (let tm = 0; tm < 2; tm++) if (room.offline[tm] && Date.now() > room.offline[tm]) forfeitOffline(room, tm);
     if (g.state === 'end') { room.endT += TICK; if (room.endT > 1.5) closeRoom(room); }
   }
 }, TICK * 1000);

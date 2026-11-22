@@ -72,6 +72,9 @@ const DESC = {
   inferno: '烈焰射线锁定目标后伤害持续攀升，专克重装单位。',
   zap: '瞬间电击，造成伤害并使目标短暂眩晕。',
   freeze: '冻结区域内的敌方部队和防御塔 4 秒。',
+  rage: '让区域内己方部队的移动和攻击速度提升 35%，持续 6 秒。',
+  mortar: '超远射程的攻城炮，炮弹造成范围伤害，但打不到贴身的敌人。',
+  witch: '远程范围攻击，每 7 秒召唤 3 个骷髅。',
 };
 // 卡组存档
 let decks, deckIdx = 0;
@@ -653,6 +656,58 @@ SPR.inferno = (g, c, st) => {
   HL(g, -0.04, -1.38, 0.03, 0.08, 0.7);
 };
 
+SPR.mortar = (g, c, st) => {
+  RR(g, -0.5, -0.32, 1.0, 0.32, 0.1, '#7d838f');
+  line(g, -0.45, -0.16, 0.45, -0.16, 0.03, 'rgba(0,0,0,0.3)'); g.lineWidth = 0.07; g.strokeStyle = OUT;
+  RR(g, -0.5, -0.1, 1.0, 0.07, 0.03, c.main);
+  E(g, 0, -0.36, 0.46, 0.17, '#9aa0ab');
+  const rec = (st.atk || 0) * 0.12, ang = st.ang ?? -Math.PI / 2;
+  const lean = Math.cos(ang) * 0.25;
+  g.save(); g.translate(0, -0.45 + rec); g.rotate(lean);
+  RR(g, -0.24, -0.62, 0.48, 0.66, 0.12, '#4a4f5c');
+  E(g, 0, -0.62, 0.26, 0.09, '#2a2e38');
+  RR(g, -0.27, -0.3, 0.54, 0.1, 0.04, '#6b717d');
+  HL(g, -0.12, -0.35, 0.04, 0.18, 0.3);
+  g.restore();
+  if ((st.atk || 0) > 0.7) { dot(g, 0, -1.15, 0.18, 'rgba(255,240,180,0.8)'); }
+};
+SPR.witch = (g, c, st) => {
+  const w = Math.sin(st.walk) * 0.05;
+  P(g, [-0.32, 0, 0.32, 0, 0.18, -0.7, -0.18, -0.7], c.dark);
+  P(g, [-0.32, 0, 0.32, 0, 0.3, -0.08, -0.3, -0.08], '#3a2a4a');
+  P(g, [-0.24, -0.98, -0.34, -0.35, -0.14, -0.6], '#5b3a7a');
+  C(g, 0.04, -0.86, 0.19, '#ffd8c0');
+  P(g, [-0.18, -1.0, 0.1, -1.02, 0.16, -0.94, -0.1, -0.86], '#5b3a7a');
+  dot(g, 0.13, -0.87, 0.03, OUT); dot(g, 0.1, -0.78, 0.035, 'rgba(255,120,150,0.6)');
+  g.lineWidth = 0.07; g.strokeStyle = OUT;
+  P(g, [-0.24, -1.0, 0.3, -1.0, 0.18, -1.08, 0.02, -1.5, -0.12, -1.08], c.main);
+  E(g, 0.03, -1.0, 0.32, 0.06, c.main);
+  line(g, 0.33, 0.0, 0.33, -1.0, 0.11, OUT); line(g, 0.33, 0.0, 0.33, -1.0, 0.05, '#5a3a20');
+  const glow = st.aim ? 0.7 + 0.3 * Math.sin((st.time || 0) * 10) : 0.3;
+  const gr = g.createRadialGradient(0.33, -1.1, 0, 0.33, -1.1, 0.32);
+  gr.addColorStop(0, `rgba(210,120,255,${glow})`); gr.addColorStop(1, 'rgba(150,60,255,0)');
+  g.fillStyle = gr; g.beginPath(); g.arc(0.33, -1.1, 0.32, 0, TAU); g.fill();
+  g.lineWidth = 0.05; g.strokeStyle = OUT; C(g, 0.33, -1.1, 0.1, '#eeece2');
+  dot(g, 0.3, -1.11, 0.022, '#8a3cff'); dot(g, 0.36, -1.11, 0.022, '#8a3cff');
+  C(g, 0.25, -0.5, 0.07, '#ffd8c0');
+};
+function drawRageArt(g, w, h) {
+  const cx = w / 2, cy = h * 0.47;
+  const gr = g.createRadialGradient(cx, cy, 0, cx, cy, w * 0.5);
+  gr.addColorStop(0, 'rgba(240,160,255,0.9)'); gr.addColorStop(1, 'rgba(160,40,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  g.lineWidth = w * 0.03; g.strokeStyle = OUT;
+  RR(g, cx - w * 0.07, cy - w * 0.36, w * 0.14, w * 0.14, w * 0.03, '#c9a46a');
+  g.beginPath(); g.moveTo(cx - w * 0.08, cy - w * 0.22); g.lineTo(cx - w * 0.24, cy + w * 0.05); g.arc(cx, cy + w * 0.08, w * 0.25, Math.PI * 0.95, Math.PI * 0.05, true); g.lineTo(cx + w * 0.08, cy - w * 0.22); g.closePath();
+  g.fillStyle = 'rgba(230,240,255,0.55)'; g.fill(); g.stroke();
+  g.save(); g.clip(); g.fillStyle = '#b33cf0'; g.fillRect(cx - w * 0.3, cy - w * 0.02, w * 0.6, w * 0.4); g.restore();
+  g.beginPath(); g.moveTo(cx - w * 0.08, cy - w * 0.22); g.lineTo(cx - w * 0.24, cy + w * 0.05); g.arc(cx, cy + w * 0.08, w * 0.25, Math.PI * 0.95, Math.PI * 0.05, true); g.lineTo(cx + w * 0.08, cy - w * 0.22); g.closePath(); g.stroke();
+  dot(g, cx - w * 0.05, cy + w * 0.12, w * 0.035, 'rgba(255,255,255,0.7)'); dot(g, cx + w * 0.08, cy + w * 0.05, w * 0.025, 'rgba(255,255,255,0.7)');
+  HL(g, cx - w * 0.12, cy, w * 0.03, w * 0.08, 0.6);
+  line(g, cx + w * 0.22, cy - w * 0.3, cx + w * 0.3, cy - w * 0.38, w * 0.03, '#ffe36b');
+  line(g, cx - w * 0.22, cy - w * 0.3, cx - w * 0.3, cy - w * 0.38, w * 0.03, '#ffe36b');
+}
+
 function drawSprite(g, type, team, X, Y, s, st) {
   g.save(); g.translate(X, Y); g.scale(s * (st.face || 1), s * (st.sq || 1));
   g.lineJoin = 'round'; g.lineCap = 'round'; g.strokeStyle = OUT; g.lineWidth = 0.07;
@@ -682,6 +737,8 @@ const CARD_ART = {
   cannonB: [['cannonB', 0.5, 0.85, 0.6]],
   tomb: [['tomb', 0.5, 0.88, 0.55]],
   inferno: [['inferno', 0.5, 0.92, 0.45]],
+  mortar: [['mortar', 0.5, 0.86, 0.55]],
+  witch: [['witch', 0.46, 0.88, 0.48]],
 };
 function drawBolt(g, x0, y0, x1, y1, w, seed0) {
   let s = seed0; const r = () => ((s = (s * 9301 + 49297) % 233280) / 233280 - 0.5);
@@ -751,6 +808,8 @@ function buildCardImg(id, w, h) {
     drawZapArt(g, w, h);
   } else if (cd.spell === 'freeze') {
     drawFreezeArt(g, w, h);
+  } else if (cd.spell === 'rage') {
+    drawRageArt(g, w, h);
   } else {
     for (let i = 0; i < 5; i++) drawArrowIcon(g, w * (0.25 + i * 0.13), h * (0.3 + (i % 2) * 0.18 + i * 0.05), w * 0.5, 1.0, w * 0.02);
   }
@@ -822,6 +881,8 @@ function sfx(n) {
     case 'boomS': noise(0.3, 0.3, 700); tone('sine', 110, 40, 0.25, 0.25); break;
     case 'beam': tone('sawtooth', 120, 110, 0.12, 0.025); break;
     case 'charge': tone('triangle', 300, 700, 0.3, 0.06); break;
+    case 'rage': tone('sawtooth', 200, 600, 0.35, 0.05); tone('square', 400, 900, 0.25, 0.03, 0.1); break;
+    case 'emote': tone('sine', 700, 1000, 0.08, 0.06); tone('sine', 1000, 1300, 0.08, 0.05, 0.08); break;
     case 'swap': tone('square', 500, 800, 0.06, 0.05); tone('square', 800, 1100, 0.06, 0.05, 0.06); break;
   }
 }
@@ -970,7 +1031,12 @@ function drawUnit(u, time) {
     ctx.fillStyle = 'rgba(170,230,255,0.45)'; ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 2;
     rrp(ctx, X - wd / 2, Y - z * T - hgt, wd, hgt, T * 0.15); ctx.fill(); ctx.stroke();
     ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillRect(X - wd * 0.3, Y - z * T - hgt * 0.9, wd * 0.12, hgt * 0.5);
-  } else if (u.stun > 0) {
+  }
+  if (u.rage > 0 && !frozen) {
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35 + 0.15 * Math.sin(time * 12);
+    ctx.fillStyle = '#c050ff'; ctx.beginPath(); ctx.ellipse(X, Y, u.r * T * 1.4, u.r * T * 0.6, 0, 0, TAU); ctx.fill(); ctx.restore();
+  }
+  if (!frozen && u.stun > 0) {
     const hy = Y - z * T - s * 1.25;
     for (let i = 0; i < 3; i++) { const a = time * 8 + i * TAU / 3; dot(ctx, X + Math.cos(a) * T * 0.3, hy + Math.sin(a) * T * 0.1, T * 0.07, '#fff36b'); }
   }
@@ -1044,9 +1110,16 @@ function drawProj(p) {
       dot(g, X, Y, T * 0.06, '#fff6c0');
       break;
     }
-    case 'bomb': case 'dropbomb':
+    case 'hex': {
+      const r = T * 0.22, gr = g.createRadialGradient(X, Y, 0, X, Y, r * 1.8);
+      gr.addColorStop(0, '#fbeaff'); gr.addColorStop(0.4, '#c060ff'); gr.addColorStop(1, 'rgba(120,0,255,0)');
+      g.fillStyle = gr; g.beginPath(); g.arc(X, Y, r * 1.8, 0, TAU); g.fill();
+      break;
+    }
+    case 'bomb': case 'dropbomb': case 'mortar':
       g.fillStyle = 'rgba(0,0,0,0.2)'; g.beginPath(); g.ellipse(X, sy(p.y), T * 0.15, T * 0.07, 0, 0, TAU); g.fill();
-      g.lineWidth = T * 0.05; g.strokeStyle = OUT; C(g, X, Y, T * (p.kind === 'dropbomb' ? 0.2 : 0.16), '#2f333d');
+      if (p.kind === 'mortar') { g.strokeStyle = 'rgba(255,70,40,0.45)'; g.lineWidth = T * 0.04; g.setLineDash([T * 0.15, T * 0.12]); g.beginPath(); g.ellipse(sx(p.tx), sy(p.ty), p.splash * T, p.splash * TH, 0, 0, TAU); g.stroke(); g.setLineDash([]); }
+      g.lineWidth = T * 0.05; g.strokeStyle = OUT; C(g, X, Y, T * (p.kind === 'bomb' ? 0.16 : 0.2), '#2f333d');
       dot(g, X + T * 0.08, Y - T * 0.15, T * 0.06, '#ffd447');
       break;
     case 'cannon':
@@ -1100,6 +1173,7 @@ function drawParticles() {
 function drawDecals() {
   for (const d of G.decals) {
     const a = Math.min(1, d.life / Math.min(1, d.max));
+    if (d.rage) { ctx.globalAlpha = Math.min(1, d.life / 0.5) * (0.28 + 0.06 * Math.sin(performance.now() / 120)); ctx.fillStyle = '#c050ff'; ctx.beginPath(); ctx.ellipse(sx(d.x), sy(d.y), d.r * T, d.r * TH, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; continue; }
     if (d.ice) { ctx.globalAlpha = Math.min(1, d.life / 0.5) * 0.4; ctx.fillStyle = '#bfefff'; ctx.beginPath(); ctx.ellipse(sx(d.x), sy(d.y), d.r * T, d.r * TH, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; continue; }
     if (d.arrow) { ctx.globalAlpha = a; line(ctx, sx(d.x), sy(d.y), sx(d.x) + T * 0.08, sy(d.y) - T * 0.25, T * 0.05, '#7a4b22'); continue; }
     ctx.globalAlpha = a * 0.45;
@@ -1179,10 +1253,13 @@ function drawHUD() {
   if (G.dbl) { drawDrop(g, bx - T * 0.55, by + bh * 0.55, T * 0.28); txt(g, '×2', bx - T * 0.55, by + bh * 1.15, T * 0.34, '#ff9dff'); }
   // 我方名牌（竞技场左下）
   const py = sy(ROWS) - T * 1.05;
-  g.fillStyle = 'rgba(20,10,30,0.55)'; rrp(g, nx, py, T * 3.0, T * 0.8, T * 0.24); g.fill(); g.lineWidth = 2; g.stroke();
+  const nm = myName.length > 6 ? myName.slice(0, 6) : myName, fs = T * 0.32;
+  g.font = `900 ${fs}px ${FONT}`; const nmw = g.measureText(nm).width;
+  const tw = T * 0.42 + nmw + T * 0.25 + T * 1.9;
+  g.fillStyle = 'rgba(20,10,30,0.55)'; rrp(g, nx, py, tw, T * 0.8, T * 0.24); g.fill(); g.lineWidth = 2; g.stroke();
   g.fillStyle = TEAM[0].main; rrp(g, nx, py, T * 0.22, T * 0.8, 4); g.fill();
-  txt(g, '你', nx + T * 0.55, py + T * 0.4, T * 0.36, '#cfe6ff');
-  for (let i = 0; i < 3; i++) drawCrown(g, nx + T * (1.2 + i * 0.62), py + T * 0.42, T * 0.22, '#ffd23f', G.crowns[0] <= i);
+  txt(g, nm, nx + T * 0.36, py + T * 0.4, fs, '#cfe6ff', 'left');
+  for (let i = 0; i < 3; i++) drawCrown(g, nx + T * 0.42 + nmw + T * (0.5 + i * 0.6), py + T * 0.42, T * 0.21, '#ffd23f', G.crowns[0] <= i);
 }
 function drawCardsPanel(time) {
   const g = ctx;
@@ -1467,10 +1544,16 @@ function drawEnd(time) {
     const cs = GW * 0.075 * (on && G.endT < 0.7 + i * 0.35 ? 1.3 : 1);
     drawCrown(g, W / 2 + (i - 1) * GW * 0.2, cy + GW * 0.25, cs, '#ffd23f', !on);
   }
-  txt(g, `你 ${G.crowns[0]}  :  ${G.crowns[1]} ${G.online ? G.oppName : '电脑'}`, W / 2, cy + GW * 0.4, GW * 0.06, '#ffffff');
+  txt(g, `你 ${G.crowns[0]}  :  ${G.crowns[1]} ${G.online ? G.oppName : '电脑'}`, W / 2, cy + GW * 0.37, GW * 0.06, '#ffffff');
+  if (G.tDelta !== undefined && G.endT > 0.4) {
+    const ty = cy + GW * 0.465, sgn = G.tDelta > 0 ? '+' : '';
+    drawTrophy(g, W / 2 - GW * 0.12, ty, GW * 0.035);
+    txt(g, `${sgn}${G.tDelta}`, W / 2 - GW * 0.07, ty, GW * 0.05, G.tDelta > 0 ? '#ffd23f' : G.tDelta < 0 ? '#ff9a9a' : '#ffffff', 'left');
+    ptxt(g, `共 ${stats.trophies}`, W / 2 + GW * 0.1, ty, GW * 0.034, '#d9cfff', 'left', 700);
+  }
   if (G.endT > 0.8) {
-    button('again', W / 2 - GW * 0.28, cy + GW * 0.55, GW * 0.56, GW * 0.14, G.lobbyCode ? '返回房间' : G.online ? '再次匹配' : '再来一局', 'yellow', GW * 0.06);
-    button('menu', W / 2 - GW * 0.2, cy + GW * 0.75, GW * 0.4, GW * 0.1, '主菜单', 'blue', GW * 0.045);
+    button('again', W / 2 - GW * 0.28, cy + GW * 0.56, GW * 0.56, GW * 0.14, G.lobbyCode ? '返回房间' : G.online ? '再次匹配' : '再来一局', 'yellow', GW * 0.06);
+    button('menu', W / 2 - GW * 0.2, cy + GW * 0.76, GW * 0.4, GW * 0.1, '主菜单', 'blue', GW * 0.045);
   }
 }
 
@@ -1503,6 +1586,7 @@ function render(time) {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   drawCardsPanel(time);
   if (!idle) drawHUD();
+  if (!idle) { drawEmotes(); drawEmoteUI(); drawReconnect(); }
   drawBanners();
   // 拖拽中的卡牌（在 UI 区）
   if (drag && !drag.inArena && drag.moved) {
@@ -1520,7 +1604,7 @@ function render(time) {
   if (G.state === 'play' && G.elapsed < 1.0) {
     ctx.globalAlpha = 1 - G.elapsed; txt(ctx, '开战!', W / 2, sy(16), T * 1.8, '#ffd23f', 'center', OUT, T * 0.35); ctx.globalAlpha = 1;
   }
-  if (G.state === 'menu') drawMenu(time);
+  if (G.state === 'menu') { drawMenu(time); drawMenuChips(); }
   if (G.state === 'match') drawMatch(time);
   if (G.state === 'room') drawRoom(time);
   if (G.state === 'end') drawEnd(time);
@@ -1556,7 +1640,9 @@ function netConnect(onOpen) {
   ws.onclose = () => {
     if (NET.ws !== ws) return;
     NET.ws = null; NET.onOpen = null; NET.lobby = null;
-    if (G.online && (G.state === 'play' || G.state === 'countdown')) { G.banners.push({ text: '连接已断开', sub: '请检查网络后重新匹配', color: '#ff8a8a', t: 0, dur: 3 }); G.state = 'end'; G.endT = 0; G.winner = -2; G.lobbyCode = null; }
+    if (G.online && NET.token && (G.state === 'play' || G.state === 'countdown' || G.state === 'ending')) { startReconnect(); }
+    else if (NET.reconnecting) { setTimeout(reconnectTry, 2000); }
+    else if (G.online && (G.state === 'play' || G.state === 'countdown')) { G.banners.push({ text: '连接已断开', sub: '请检查网络后重新匹配', color: '#ff8a8a', t: 0, dur: 3 }); G.state = 'end'; G.endT = 0; G.winner = -2; G.lobbyCode = null; }
     else if (G.state === 'match') { NET.err = CONNERR; NET.state = 'error'; }
     else if (G.state === 'room') { NET.roomErr = CONNERR; NET.rmode = NET.rmode === 'join' ? 'join' : 'menu'; }
     NET.state = 'idle';
@@ -1599,7 +1685,7 @@ function roomCopy() {
 }
 function netQueue() { NET.state = 'queue'; NET.t0 = performance.now(); netSend({ t: 'queue', name: myName, deck: decks[deckIdx] }); }
 function netCancel() { netSend({ t: 'cancel' }); NET.state = 'idle'; startLocal(menuDiff); G.state = 'menu'; }
-function netLeave() { netSend({ t: 'leave' }); NET.state = 'idle'; NET.lobby = null; startLocal(menuDiff); G.state = 'menu'; }
+function netLeave() { netSend({ t: 'leave' }); clearRejoin(); NET.reconnecting = null; NET.state = 'idle'; NET.lobby = null; startLocal(menuDiff); G.state = 'menu'; }
 function makeView(m) {
   const v = {
     state: 'countdown', cd: 3.5, time: 180, ot: false, dbl: false, el: [5, 5], crowns: [0, 0], units: [], towers: TOWER_POS.map(makeTower),
@@ -1617,11 +1703,23 @@ function makeView(m) {
 function netMsg(m) {
   if (m.t === 'queued' || m.t === 'online') { NET.online = m.online || NET.online; return; }
   if (m.t === 'start') {
-    NET.state = 'game'; NET.team = m.team; NET.opp = m.opp;
-    useG(makeView(m)); sel = null; drag = null; sfx('go');
+    NET.state = 'game'; NET.team = m.team; NET.opp = m.opp; NET.oppOff = 0;
+    if (m.token) { NET.token = m.token; saveRejoin(); }
+    useG(makeView(m)); sel = null; drag = null;
+    if (m.rejoin) { NET.reconnecting = null; G.state = 'play'; G.banners.push({ text: '已重新连接', sub: '', color: '#9dffb0', t: 0, dur: 1.5 }); }
+    else sfx('go');
     return;
   }
-  if (m.t === 'oppLeft') { if (G.online) G.banners.push({ text: '对手已离开', sub: '你获得胜利', color: '#9dffb0', t: 0, dur: 2.5 }); return; }
+  if (m.t === 'emote') { if (G.online && !muteEmotes) showEmote(1, m.e | 0); return; }
+  if (m.t === 'oppOffline') { NET.oppOff = performance.now() + (m.secs || 30) * 1000; if (G.online) G.banners.push({ text: '对手掉线', sub: '等待对方重新连接…', color: '#ffd36a', t: 0, dur: 2 }); return; }
+  if (m.t === 'oppBack') { NET.oppOff = 0; if (G.online) G.banners.push({ text: '对手已重新连接', sub: '', color: '#9dffb0', t: 0, dur: 1.5 }); return; }
+  if (m.t === 'error' && m.where === 'rejoin') {
+    NET.reconnecting = null; clearRejoin();
+    if (G.online) { G.state = 'end'; G.endT = 0; G.winner = -2; G.lobbyCode = null; }
+    else if (G.state === 'match') { startLocal(menuDiff); G.state = 'menu'; deckHint(m.msg || '对局已结束'); }
+    return;
+  }
+  if (m.t === 'oppLeft') { NET.oppOff = 0; if (G.online) G.banners.push({ text: '对手已离开', sub: '你获得胜利', color: '#9dffb0', t: 0, dur: 2.5 }); return; }
   if (m.t === 'lobby') { if (G.state === 'room') { NET.lobby = m; NET.rmode = 'lobby'; NET.roomErr = ''; } return; }
   if (m.t === 'error' && m.where === 'room') { if (G.state === 'room') { NET.roomErr = m.msg || '出错了'; NET.rmode = m.back || 'menu'; NET.lobby = null; sfx('bad'); } return; }
   if (m.t === 'error') { NET.err = m.msg || '出错了'; NET.state = 'error'; return; }
@@ -1638,7 +1736,7 @@ function applySnap(v, s) {
   if (s.h) v.hand[0] = s.h;
   if (s.q) v.queue[0] = [s.q];
   if (prev !== 'play' && s.st === 'play') v.elapsed = 0;
-  if (prev !== 'end' && s.st === 'end') { v.endT = 0; sfx(v.winner === 0 ? 'win' : 'lose'); sel = null; drag = null; }
+  if (prev !== 'end' && s.st === 'end') { clearRejoin(); v.endT = 0; sfx(v.winner === 0 ? 'win' : 'lose'); sel = null; drag = null; }
   if (s.st !== 'play') { sel = null; drag = null; }
   // 防御塔
   s.tw.forEach((a, i) => {
@@ -1664,7 +1762,7 @@ function applySnap(v, s) {
     if (Math.hypot(u.nx - u.x, u.ny - u.y) > 3) { u.x = u.nx; u.y = u.ny; }
     u.hp = a[5]; u.delay = a[6]; u.landed = !!a[7]; u.spawnT = Math.max(u.spawnT || 0, a[8]); u.face = M ? -a[9] : a[9];
     u.moving = !!a[10]; u.atk = a[11]; u.attacking = !!a[12]; u.flash = a[13]; u.frozen = a[14]; u.stun = a[15]; u.charging = !!a[16];
-    u.cd = a[17] ? 0 : 9; u.ramp = a[18]; u.ang = fa(a[19]); u.deploy = a[20];
+    u.cd = a[17] ? 0 : 9; u.ramp = a[18]; u.ang = fa(a[19]); u.deploy = a[20]; u.rage = a[22] ? 1 : 0;
     tids.push([u, a[21]]);
   }
   for (const [id] of NET.umap) if (!seen.has(id)) NET.umap.delete(id);
@@ -1689,12 +1787,13 @@ function applySnap(v, s) {
       if (p.tc !== undefined) p.tc = ft(p.tc);
       p.max = p.life; v.parts.push(p);
     }
-    for (const d of f.d) v.decals.push({ x: fx(d.x), y: fy(d.y), r: d.r, life: d.life, max: d.max, ice: !!d.ice, arrow: !!d.arrow });
+    for (const d of f.d) v.decals.push({ x: fx(d.x), y: fy(d.y), r: d.r, life: d.life, max: d.max, ice: !!d.ice, arrow: !!d.arrow, rage: !!d.rage });
     for (const t of f.x) v.texts.push({ x: fx(t.x), y: fy(t.y), life: t.life, max: t.max, kind: t.kind, v: t.v, team: ft(t.team) });
     for (const b of f.b) v.banners.push({ text: b.text, sub: b.sub, color: b.color, t: 0, dur: b.dur });
     for (const n of f.s) if (n !== 'win' && n !== 'lose') sfx(n);
   }
   NET.lastSnap = performance.now();
+  if (NET.token && v.state !== 'end' && (!NET.savedAt || NET.lastSnap - NET.savedAt > 2000)) { NET.savedAt = NET.lastSnap; saveRejoin(); }
 }
 // 在线模式下每帧：插值平滑 + 本地特效
 function netTick(dt) {
@@ -1837,6 +1936,217 @@ function drawMatch(time) {
 }
 
 // =====================================================================
+//  表情互动
+// =====================================================================
+const EMOTES = [
+  { txt: '你好!', face: 'happy', col: '#ffd23f' },
+  { txt: '打得好!', face: 'thumb', col: '#7dffa0' },
+  { txt: '哈哈哈', face: 'laugh', col: '#ffe36b' },
+  { txt: '哎呀!', face: 'cry', col: '#9fd0ff' },
+  { txt: '气死了!', face: 'angry', col: '#ff8a8a' },
+  { txt: 'GG', face: 'cool', col: '#e6b3ff' },
+];
+let emoteOpen = false, emoteCd = 0, muteEmotes = false;
+function showEmote(side, e) {
+  if (!EMOTES[e]) return;
+  if (!G.emotes) G.emotes = [];
+  G.emotes = G.emotes.filter(x => x.side !== side);
+  G.emotes.push({ side, e, t: 0 });
+  sfx('emote');
+}
+function sendEmote(e) {
+  emoteOpen = false;
+  if (emoteCd > 0) return;
+  emoteCd = 2; showEmote(0, e);
+  if (G.online) netSend({ t: 'emote', e });
+  else aiEmoteLater(e === 0 ? 0 : e === 2 ? (Math.random() < 0.5 ? 4 : 2) : e === 5 ? 5 : e === 1 ? 1 : -1, 0.6);
+}
+function aiEmoteLater(e, chance = 0.5) { if (e >= 0 && Math.random() < chance && !muteEmotes) { G.aiEmote = { e, t: rnd(0.8, 1.6) }; } }
+function updEmotes(dt) {
+  emoteCd = Math.max(0, emoteCd - dt);
+  if (!G.emotes) G.emotes = [];
+  for (const x of G.emotes) x.t += dt;
+  G.emotes = G.emotes.filter(x => x.t < 2.6);
+  if (G.online || !G.decks) return;
+  // 电脑的表情反应
+  if (G.aiEmote) { G.aiEmote.t -= dt; if (G.aiEmote.t <= 0) { showEmote(1, G.aiEmote.e); G.aiEmote = null; } }
+  const pc = G._pc || [0, 0];
+  if (G.crowns[1] > pc[1]) aiEmoteLater(Math.random() < 0.6 ? 2 : 0, 0.7);
+  else if (G.crowns[0] > pc[0]) aiEmoteLater(Math.random() < 0.5 ? 3 : 4, 0.6);
+  G._pc = G.crowns.slice();
+  if (G.state === 'play' && !G._hi) { G._hi = true; aiEmoteLater(0, 0.35); }
+  if (G.state === 'end' && !G._gg) { G._gg = true; aiEmoteLater(G.winner === 1 ? 2 : 5, 0.8); }
+}
+function drawEmoteFace(g, x, y, r, face) {
+  g.lineWidth = Math.max(1.5, r * 0.14); g.strokeStyle = OUT;
+  C(g, x, y, r, face === 'angry' ? '#ff7a5a' : '#ffd84a');
+  HL(g, x - r * 0.35, y - r * 0.4, r * 0.25, r * 0.15, 0.5);
+  const ew = r * 0.13;
+  if (face === 'laugh') { line(g, x - r * 0.5, y - r * 0.2, x - r * 0.2, y - r * 0.3, ew, OUT); line(g, x + r * 0.2, y - r * 0.3, x + r * 0.5, y - r * 0.2, ew, OUT); }
+  else if (face === 'cool') { RR(g, x - r * 0.75, y - r * 0.38, r * 0.65, r * 0.32, r * 0.1, '#222'); RR(g, x + r * 0.1, y - r * 0.38, r * 0.65, r * 0.32, r * 0.1, '#222'); }
+  else if (face === 'angry') { line(g, x - r * 0.55, y - r * 0.45, x - r * 0.15, y - r * 0.25, ew, OUT); line(g, x + r * 0.15, y - r * 0.25, x + r * 0.55, y - r * 0.45, ew, OUT); dot(g, x - r * 0.33, y - r * 0.1, r * 0.1, OUT); dot(g, x + r * 0.33, y - r * 0.1, r * 0.1, OUT); }
+  else { dot(g, x - r * 0.33, y - r * 0.2, r * 0.11, OUT); dot(g, x + r * 0.33, y - r * 0.2, r * 0.11, OUT); }
+  g.lineWidth = Math.max(1.5, r * 0.12); g.strokeStyle = OUT;
+  if (face === 'cry') { g.beginPath(); g.arc(x, y + r * 0.45, r * 0.3, Math.PI * 1.15, Math.PI * 1.85); g.stroke(); dot(g, x - r * 0.4, y + r * 0.15, r * 0.12, '#5ab8ff'); }
+  else if (face === 'angry') { g.beginPath(); g.arc(x, y + r * 0.5, r * 0.28, Math.PI * 1.2, Math.PI * 1.8); g.stroke(); }
+  else if (face === 'laugh') { g.beginPath(); g.moveTo(x - r * 0.45, y + r * 0.1); g.quadraticCurveTo(x, y + r * 0.9, x + r * 0.45, y + r * 0.1); g.closePath(); g.fillStyle = '#7a2a2a'; g.fill(); g.stroke(); }
+  else { g.beginPath(); g.arc(x, y + r * 0.05, r * 0.42, Math.PI * 0.2, Math.PI * 0.8); g.stroke(); }
+  if (face === 'thumb') { g.lineWidth = Math.max(1.5, r * 0.12); RR(g, x + r * 0.55, y + r * 0.05, r * 0.5, r * 0.55, r * 0.12, '#ffd84a'); RR(g, x + r * 0.62, y - r * 0.45, r * 0.2, r * 0.55, r * 0.1, '#ffd84a'); }
+}
+function drawEmoteBubble(g, x, y, e, scale, alpha, tailDown) {
+  const em = EMOTES[e]; if (!em) return;
+  g.save(); g.globalAlpha = alpha; g.translate(x, y); g.scale(scale, scale);
+  const fs = T * 0.48; g.font = `900 ${fs}px ${FONT}`;
+  const tw = g.measureText(em.txt).width, w = tw + T * 1.5, h = T * 1.05;
+  g.lineWidth = 2.5; g.strokeStyle = OUT; g.fillStyle = '#ffffff';
+  rrp(g, -w / 2, -h / 2, w, h, h * 0.4); g.fill(); g.stroke();
+  g.beginPath(); const ty = tailDown ? h / 2 : -h / 2, td = tailDown ? 1 : -1;
+  g.moveTo(-w * 0.15, ty - td * 2); g.lineTo(-w * 0.3, ty + td * T * 0.4); g.lineTo(-w * 0.02, ty - td * 2); g.fillStyle = '#fff'; g.fill(); g.stroke();
+  g.fillStyle = '#fff'; g.fillRect(-w * 0.16, ty - td * 4 - (td > 0 ? 0 : -1), w * 0.15, 4 * td);
+  drawEmoteFace(g, -w / 2 + T * 0.55, 0, T * 0.34, em.face);
+  txt(g, em.txt, -w / 2 + T * 1.05 + tw / 2, 0, fs, em.col, 'center', OUT, fs * 0.25);
+  g.restore();
+}
+function drawEmotes() {
+  if (!G.emotes) return;
+  for (const x of G.emotes) {
+    const s = x.t < 0.15 ? lerp(0.3, 1.1, x.t / 0.15) : x.t < 0.25 ? lerp(1.1, 1, (x.t - 0.15) / 0.1) : 1;
+    const a = x.t > 2.2 ? (2.6 - x.t) / 0.4 : 1;
+    if (x.side === 0) drawEmoteBubble(ctx, sx(13.3), sy(28.6), x.e, s, a, true);
+    else drawEmoteBubble(ctx, sx(13.3), sy(2.4), x.e, s, a, true);
+  }
+}
+function drawEmoteUI() {
+  if (G.state !== 'play') { emoteOpen = false; return; }
+  const bx = sx(0.95), by = sy(29.4), r = T * 0.68;
+  ctx.lineWidth = 2.5; ctx.strokeStyle = OUT;
+  C(ctx, bx, by, r, emoteOpen ? '#ffd23f' : 'rgba(30,18,60,0.8)');
+  ctx.fillStyle = '#fff'; rrp(ctx, bx - r * 0.55, by - r * 0.45, r * 1.1, r * 0.75, r * 0.25); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(bx - r * 0.3, by + r * 0.25); ctx.lineTo(bx - r * 0.45, by + r * 0.55); ctx.lineTo(bx - r * 0.05, by + r * 0.28); ctx.fill();
+  for (let i = -1; i <= 1; i++) dot(ctx, bx + i * r * 0.28, by - r * 0.08, r * 0.09, OUT);
+  if (emoteCd > 0) { ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.beginPath(); ctx.moveTo(bx, by); ctx.arc(bx, by, r, -Math.PI / 2, -Math.PI / 2 + TAU * emoteCd / 2); ctx.closePath(); ctx.fill(); }
+  BTN.push({ id: 'emo', x: bx - r, y: by - r, w: r * 2, h: r * 2 });
+  if (!emoteOpen) return;
+  const pw = T * 7.6, ph = T * 4.3, px = sx(0.3), py = by - r - ph - T * 0.2;
+  ctx.fillStyle = 'rgba(20,10,40,0.88)'; ctx.lineWidth = 2.5; ctx.strokeStyle = OUT; rrp(ctx, px, py, pw, ph, T * 0.4); ctx.fill(); ctx.stroke();
+  EMOTES.forEach((em, i) => {
+    const cw = T * 3.5, chh = T * 1.05, cx = px + T * 0.2 + (i % 2) * (cw + T * 0.2), cy = py + T * 0.2 + Math.floor(i / 2) * (chh + T * 0.15);
+    ctx.fillStyle = 'rgba(255,255,255,0.95)'; rrp(ctx, cx, cy, cw, chh, chh * 0.4); ctx.fill(); ctx.lineWidth = 2; ctx.stroke();
+    drawEmoteFace(ctx, cx + T * 0.55, cy + chh / 2, T * 0.32, em.face);
+    txt(ctx, em.txt, cx + T * 2.1, cy + chh / 2, T * 0.4, em.col, 'center', OUT, T * 0.1);
+    BTN.push({ id: 'e' + i, x: cx, y: cy, w: cw, h: chh });
+  });
+  const my = py + ph - T * 0.55;
+  ptxt(ctx, muteEmotes ? '🔇 已屏蔽对方表情（点此恢复）' : '屏蔽对方表情', px + pw / 2, my, T * 0.34, muteEmotes ? '#ff9a9a' : '#b9aee0', 'center', 700);
+  BTN.push({ id: 'emute', x: px, y: my - T * 0.3, w: pw, h: T * 0.6 });
+}
+
+// =====================================================================
+//  奖杯 & 战绩 & 昵称
+// =====================================================================
+const ARENAS = [[0, '新手草地'], [200, '林间营地'], [500, '石桥要塞'], [900, '熔岩峡谷'], [1400, '冰霜王庭'], [2000, '皇家殿堂']];
+let stats = { trophies: 0, best: 0, wins: 0, losses: 0, draws: 0, three: 0, onW: 0, onL: 0 };
+try { Object.assign(stats, JSON.parse(localStorage.getItem('ra_stats') || '{}')); } catch (e) {}
+function saveStats() { try { localStorage.setItem('ra_stats', JSON.stringify(stats)); } catch (e) {} }
+function arenaIdx(t) { let i = 0; ARENAS.forEach(([v], k) => { if (t >= v) i = k; }); return i; }
+function recordResult() {
+  if (G.recorded) return; G.recorded = true;
+  const w = G.winner, before = stats.trophies; let d = 0;
+  if (w === 0) { d = G.online ? 30 : { easy: 10, normal: 20, hard: 30 }[G.diff] || 20; if (G.crowns[0] >= 3) { d += 5; stats.three++; } stats.wins++; if (G.online) stats.onW++; }
+  else if (w === 1) { d = -(G.online ? 20 : { easy: 8, normal: 12, hard: 15 }[G.diff] || 12); stats.losses++; if (G.online) stats.onL++; }
+  else if (w === -1) stats.draws++;
+  stats.trophies = Math.max(0, before + d); stats.best = Math.max(stats.best, stats.trophies);
+  G.tDelta = stats.trophies - before;
+  if (arenaIdx(stats.trophies) > arenaIdx(before)) G.banners.push({ text: '晋升竞技场!', sub: ARENAS[arenaIdx(stats.trophies)][1], color: '#ffd23f', t: 0, dur: 3 });
+  saveStats();
+}
+function drawTrophy(g, x, y, s) {
+  g.save(); g.translate(x, y); g.lineWidth = Math.max(1.5, s * 0.12); g.strokeStyle = OUT;
+  g.beginPath(); g.arc(-s * 0.55, -s * 0.3, s * 0.3, Math.PI * 0.5, Math.PI * 1.5); g.stroke();
+  g.beginPath(); g.arc(s * 0.55, -s * 0.3, s * 0.3, -Math.PI * 0.5, Math.PI * 0.5); g.stroke();
+  P(g, [-s * 0.6, -s * 0.7, s * 0.6, -s * 0.7, s * 0.45, 0, s * 0.12, s * 0.2, s * 0.12, s * 0.45, s * 0.35, s * 0.6, -s * 0.35, s * 0.6, -s * 0.12, s * 0.45, -s * 0.12, s * 0.2, -s * 0.45, 0], '#ffc93c');
+  HL(g, -s * 0.2, -s * 0.4, s * 0.1, s * 0.2, 0.6);
+  g.restore();
+}
+function drawMenuChips() {
+  const g = ctx, y = TOPY + GW * 0.03, h = GW * 0.085;
+  const x0 = GX + GW * 0.03, w0 = GW * 0.42;
+  g.fillStyle = 'rgba(20,10,40,0.75)'; g.lineWidth = 2; g.strokeStyle = OUT; rrp(g, x0, y, w0, h, h * 0.3); g.fill(); g.stroke();
+  drawTrophy(g, x0 + h * 0.5, y + h * 0.52, h * 0.32);
+  txt(g, String(stats.trophies), x0 + h * 0.95, y + h * 0.34, h * 0.36, '#ffd23f', 'left');
+  ptxt(g, ARENAS[arenaIdx(stats.trophies)][1] + `  胜${stats.wins}/负${stats.losses}`, x0 + h * 0.95, y + h * 0.74, h * 0.24, '#d9cfff', 'left', 700);
+  const w1 = GW * 0.42, x1 = GX + GW * 0.97 - w1;
+  g.fillStyle = 'rgba(20,10,40,0.75)'; rrp(g, x1, y, w1, h, h * 0.3); g.fill(); g.stroke();
+  ptxt(g, '昵称', x1 + h * 0.3, y + h * 0.3, h * 0.24, '#b9aee0', 'left', 700);
+  txt(g, myName.length > 7 ? myName.slice(0, 7) + '…' : myName, x1 + h * 0.3, y + h * 0.66, h * 0.32, '#ffffff', 'left');
+  txt(g, '✎', x1 + w1 - h * 0.45, y + h * 0.5, h * 0.42, '#ffd23f');
+  BTN.push({ id: 'name', x: x1, y, w: w1, h });
+}
+function editName() {
+  if (document.getElementById('nameov')) return;
+  const ov = document.createElement('div'); ov.id = 'nameov';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,5,25,.72);display:flex;align-items:center;justify-content:center;z-index:10;touch-action:auto';
+  const bs = 'flex:1;padding:12px;font-size:17px;font-weight:900;border:3px solid #1d1528;border-radius:12px;color:#fff;text-shadow:0 2px 0 #1d1528;';
+  ov.innerHTML = `<div style="background:linear-gradient(#4a3680,#271a4c);border:3px solid #1d1528;border-radius:18px;padding:20px 18px;width:min(82vw,330px);font-family:${FONT.replace(/"/g, "'")};color:#fff;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.5)">
+    <div style="font-weight:900;font-size:22px;color:#ffd23f;margin-bottom:6px;text-shadow:0 2px 0 #1d1528">修改昵称</div>
+    <div style="font-size:13px;color:#cfc4f0;margin-bottom:12px">联机时对手会看到这个名字（最多 12 个字）</div>
+    <input id="nmin" maxlength="12" autocomplete="off" style="width:100%;box-sizing:border-box;font-size:19px;font-weight:700;padding:11px;border-radius:12px;border:3px solid #1d1528;text-align:center;-webkit-user-select:text;user-select:text;outline:none" />
+    <div style="margin-top:16px;display:flex;gap:10px">
+      <button id="nmc" style="${bs}background:linear-gradient(#c9c3d6,#8c86a0)">取消</button>
+      <button id="nmo" style="${bs}background:linear-gradient(#ffe873,#ffbf1f)">确定</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+  const inp = ov.querySelector('#nmin'); inp.value = myName;
+  setTimeout(() => { inp.focus(); inp.select(); }, 50);
+  const close = () => ov.remove();
+  const ok = () => {
+    const v = inp.value.replace(/[<>\n\r\t]/g, '').trim().slice(0, 12);
+    if (v) { myName = v; try { localStorage.setItem('ra_name', v); } catch (e) {} sfx('swap'); }
+    close();
+  };
+  ov.querySelector('#nmo').onclick = ok; ov.querySelector('#nmc').onclick = close;
+  inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') ok(); if (e.key === 'Escape') close(); });
+  ov.addEventListener('pointerdown', e => { if (e.target === ov) close(); });
+}
+
+// =====================================================================
+//  断线重连
+// =====================================================================
+function saveRejoin() { try { if (NET.token) sessionStorage.setItem('ra_rejoin', JSON.stringify({ token: NET.token, t: Date.now() })); } catch (e) {} }
+function clearRejoin() { NET.token = null; try { sessionStorage.removeItem('ra_rejoin'); } catch (e) {} }
+function startReconnect() {
+  if (!NET.reconnecting) {
+    NET.reconnecting = { until: performance.now() + 28000 };
+    G.banners = [];
+  }
+  setTimeout(reconnectTry, 1500);
+}
+function reconnectTry() {
+  if (!NET.reconnecting) return;
+  if (performance.now() > NET.reconnecting.until) {
+    NET.reconnecting = null; clearRejoin();
+    if (G.online) { G.state = 'end'; G.endT = 0; G.winner = -2; G.lobbyCode = null; }
+    return;
+  }
+  const err = netConnect(() => netSend({ t: 'rejoin', token: NET.token }));
+  if (err) { NET.reconnecting = null; }
+}
+function drawReconnect() {
+  if (!G.online) return;
+  const now = performance.now();
+  if (NET.reconnecting) {
+    const secs = Math.max(0, Math.ceil((NET.reconnecting.until - now) / 1000));
+    ctx.fillStyle = 'rgba(10,5,25,0.6)'; ctx.fillRect(0, sy(13), W, sy(19) - sy(13));
+    txt(ctx, '正在重新连接' + '.'.repeat(1 + Math.floor(now / 500) % 3), W / 2, sy(15.4), T * 0.8, '#ffd23f');
+    ptxt(ctx, `对局仍在进行，${secs} 秒内连回即可继续`, W / 2, sy(17), T * 0.42, '#ffffff', 'center');
+  }
+  if (NET.oppOff > now && G.state === 'play') {
+    const secs = Math.ceil((NET.oppOff - now) / 1000);
+    ptxt(ctx, `对手掉线，等待重连 ${secs}s`, GX + T * 0.4, TOPY + T * 1.65, T * 0.32, '#ff9a9a', 'left', 800);
+  }
+}
+
+// =====================================================================
 //  输入
 // =====================================================================
 function ptr(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
@@ -1858,6 +2168,10 @@ function tryDeployAt(i, p, touch) {
 }
 function onButton(id) {
   sfx('card');
+  if (id === 'emo') { emoteOpen = !emoteOpen; return; }
+  if (/^e[0-5]$/.test(id)) { sendEmote(+id[1]); return; }
+  if (id === 'emute') { muteEmotes = !muteEmotes; return; }
+  if (id === 'name') { editName(); return; }
   if (id === 'again' && G.lobbyCode) { if (NET.ws && NET.ws.readyState === 1) roomBack(); else openRoom('menu'); }
   else if (id === 'online' || (id === 'again' && G.online)) { netStartMatch(); }
   else if (id === 'room') openRoom('menu');
@@ -1893,6 +2207,7 @@ cv.addEventListener('pointerdown', e => {
   e.preventDefault(); audioInit();
   const p = ptr(e);
   for (const b of BTN) if (hit(b, p)) { onButton(b.id); return; }
+  if (emoteOpen) { emoteOpen = false; return; }
   if (G && G.state === 'deck') {
     try { cv.setPointerCapture(e.pointerId); } catch (_) {}
     DK.ptr = { x: p.x, y: p.y, sy: DK.scroll, moved: false, inColl: DK.coll && hit(DK.coll, p) };
@@ -1955,6 +2270,7 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   DK.hintT = Math.max(0, DK.hintT - dt);
+  try { if (G.state !== 'menu' && G.state !== 'deck' && G.state !== 'match' && G.state !== 'room') { updEmotes(dt); if (G.state === 'end' && (G.online || G.decks) && G.winner !== undefined) recordResult(); } } catch (err) { console.error(err); }
   try { if (G.online) netTick(dt); else Core.update(dt); render(now / 1000); } catch (err) { console.error(err); }
   requestAnimationFrame(frame);
 }
@@ -1964,11 +2280,19 @@ loadDecks();
 layout();
 Core.hooks.sfx = sfx;
 startLocal(menuDiff); G.state = 'menu';
+{
+  let rj = null; try { rj = JSON.parse(sessionStorage.getItem('ra_rejoin') || 'null'); } catch (e) {}
+  if (rj && rj.token && Date.now() - rj.t < 28000) {
+    NET.token = rj.token; G.state = 'match'; NET.state = 'connecting'; NET.t0 = performance.now();
+    const err = netConnect(() => netSend({ t: 'rejoin', token: NET.token }));
+    if (err) { G.state = 'menu'; clearRejoin(); }
+  } else clearRejoin();
+}
 { const rq = new URLSearchParams(location.search).get('room'); if (rq && /^\d{4}$/.test(rq)) { openRoom('join'); NET.input = rq; if (G.state === 'room') roomJoin(); } }
 requestAnimationFrame(frame);
 
 // 调试/测试钩子
-window.RA = { get G() { return G; }, get decks() { return decks; }, NET, DK, openDeck, deckTap, onButton, genDeck, deploy, startLocal, update: dt => Core.update(dt), tryDeployAt, adjustPlace, setSel: v => sel = v, layout: () => ({ OX, OY, T, TH, UI_TOP, UIL }) };
+window.RA = { get G() { return G; }, get decks() { return decks; }, get stats() { return stats; }, sendEmote, editName, showEmote, NET, DK, openDeck, deckTap, onButton, genDeck, deploy, startLocal, update: dt => Core.update(dt), tryDeployAt, adjustPlace, setSel: v => sel = v, layout: () => ({ OX, OY, T, TH, UI_TOP, UIL }) };
 })();
 </script>
 </body>
