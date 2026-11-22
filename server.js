@@ -1,6 +1,6 @@
 /* 皇家竞技场 · 联机服务器
  * - 提供 public/ 下的静态文件
- * - /ws：WebSocket 自动匹配 + 服务器权威的对战模拟（20 帧/秒）
+ * - /ws：WebSocket 自动匹配 / 好友房间号 + 服务器权威的对战模拟（20 帧/秒）
  * 部署到 Render：Web Service，Start Command = npm start
  */
 'use strict';
@@ -19,7 +19,7 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascri
 const server = http.createServer((req, res) => {
   const url = decodeURIComponent((req.url || '/').split('?')[0]);
   if (url === '/healthz') { res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end('ok'); return; }
-  if (url === '/stats') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ online: wss.clients.size, queue: queue.length, rooms: rooms.size })); return; }
+  if (url === '/stats') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ online: wss.clients.size, queue: queue.length, rooms: rooms.size, lobbies: lobbies.size })); return; }
   let file = path.normalize(path.join(PUB, url === '/' ? 'index.html' : url));
   if (!file.startsWith(PUB)) { res.writeHead(403); res.end(); return; }
   fs.readFile(file, (err, data) => {
@@ -33,6 +33,7 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
 let queue = [];
 const rooms = new Set();
+const lobbies = new Map();   // 房间号 → { code, members: [{ ws, here }], playing }
 
 function send(ws, o) { if (ws && ws.readyState === 1) ws.send(typeof o === 'string' ? o : JSON.stringify(o)); }
 function cleanName(n) { n = String(n || '').replace(/[<>\n\r\t]/g, '').trim().slice(0, 12); return n || '玩家'; }
@@ -47,12 +48,35 @@ function tryMatch() {
   }
 }
 
-function createRoom(players) {
+// ---------------- 好友房间 ----------------
+function genCode() {
+  for (let i = 0; i < 100; i++) { const c = String(1000 + Math.floor(Math.random() * 9000)); if (!lobbies.has(c)) return c; }
+  return null;
+}
+function lobbyInfo(lb, ws) {
+  return {
+    t: 'lobby', code: lb.code,
+    players: lb.members.map(m => ({ name: m.ws.name, here: m.here, you: m.ws === ws })),
+    canStart: lb.members.length === 2 && lb.members.every(m => m.here) && !lb.playing,
+  };
+}
+function lobbySync(lb) { for (const m of lb.members) if (m.here) send(m.ws, lobbyInfo(lb, m.ws)); }
+function removeFromLobby(ws) {
+  const lb = ws.lobby; if (!lb) return;
+  ws.lobby = null;
+  lb.members = lb.members.filter(m => m.ws !== ws);
+  if (!lb.members.length) { lobbies.delete(lb.code); console.log(`[lobby ${lb.code}] closed`); }
+  else lobbySync(lb);
+}
+function roomError(ws, msg, back) { send(ws, { t: 'error', where: 'room', msg, back }); }
+function detach(ws) { removeFromQueue(ws); if (ws.room) leaveRoom(ws, 'switch'); }
+
+function createRoom(players, lobby = null) {
   const g = Core.newGame('normal', players[0].deck, players[1].deck, { pvp: true });
-  const room = { g, players, sounds: [], endT: 0, id: Math.random().toString(36).slice(2, 8) };
+  const room = { g, players, sounds: [], endT: 0, lobby, id: Math.random().toString(36).slice(2, 8) };
   players.forEach((ws, team) => {
     ws.room = room; ws.team = team; ws.deployT = [];
-    send(ws, { t: 'start', team, opp: players[1 - team].name, hand: g.hand[team], next: g.queue[team][0] });
+    send(ws, { t: 'start', team, opp: players[1 - team].name, hand: g.hand[team], next: g.queue[team][0], code: lobby ? lobby.code : null });
   });
   rooms.add(room);
   console.log(`[room ${room.id}] ${players[0].name} vs ${players[1].name}`);
@@ -60,6 +84,7 @@ function createRoom(players) {
 
 function closeRoom(room) {
   rooms.delete(room);
+  if (room.lobby) { room.lobby.playing = false; if (lobbies.get(room.lobby.code) === room.lobby) lobbySync(room.lobby); }
   for (const ws of room.players) if (ws && ws.room === room) ws.room = null;
 }
 
@@ -97,7 +122,7 @@ function handleDeploy(ws, m) {
 }
 
 wss.on('connection', ws => {
-  ws.isAlive = true; ws.room = null; ws.name = '玩家';
+  ws.isAlive = true; ws.room = null; ws.lobby = null; ws.name = '玩家';
   ws.on('pong', () => { ws.isAlive = true; });
   ws.on('message', raw => {
     let m; try { m = JSON.parse(raw); } catch (e) { return; }
@@ -105,6 +130,7 @@ wss.on('connection', ws => {
     switch (m.t) {
       case 'queue':
         if (ws.room) leaveRoom(ws, 'requeue');
+        removeFromLobby(ws);
         if (!Core.validDeck(m.deck)) { send(ws, { t: 'error', msg: '卡组无效' }); return; }
         ws.name = cleanName(m.name); ws.deck = m.deck.slice();
         removeFromQueue(ws); queue.push(ws);
@@ -113,11 +139,56 @@ wss.on('connection', ws => {
         tryMatch();
         break;
       case 'cancel': removeFromQueue(ws); break;
-      case 'leave': removeFromQueue(ws); leaveRoom(ws, 'leave'); break;
+      case 'leave': removeFromQueue(ws); leaveRoom(ws, 'leave'); removeFromLobby(ws); break;
+      // ---- 好友房间 ----
+      case 'create': {
+        if (!Core.validDeck(m.deck)) { roomError(ws, '卡组无效', 'menu'); return; }
+        detach(ws); removeFromLobby(ws);
+        const code = genCode(); if (!code) { roomError(ws, '房间太多了，请稍后再试', 'menu'); return; }
+        ws.name = cleanName(m.name); ws.deck = m.deck.slice();
+        const lb = { code, members: [{ ws, here: true }], playing: false };
+        lobbies.set(code, lb); ws.lobby = lb;
+        console.log(`[lobby ${code}] created by ${ws.name}`);
+        lobbySync(lb);
+        break;
+      }
+      case 'join': {
+        const code = String(m.code || '').replace(/\D/g, '').slice(0, 4);
+        if (!Core.validDeck(m.deck)) { roomError(ws, '卡组无效', 'join'); return; }
+        const lb = lobbies.get(code);
+        if (!lb) { roomError(ws, `房间 ${code} 不存在，请检查房间号`, 'join'); return; }
+        ws.name = cleanName(m.name); ws.deck = m.deck.slice();
+        if (ws.lobby === lb) { const me = lb.members.find(x => x.ws === ws); me.here = true; lobbySync(lb); return; }
+        if (lb.members.length >= 2) { roomError(ws, `房间 ${code} 已满`, 'join'); return; }
+        detach(ws); removeFromLobby(ws);
+        lb.members.push({ ws, here: true }); ws.lobby = lb;
+        console.log(`[lobby ${code}] ${ws.name} joined`);
+        lobbySync(lb);
+        break;
+      }
+      case 'start': {
+        const lb = ws.lobby; if (!lb) return;
+        if (lb.members.length < 2 || !lb.members.every(x => x.here) || lb.playing) { send(ws, lobbyInfo(lb, ws)); return; }
+        lb.playing = true;
+        lb.members.forEach(x => { x.here = false; removeFromQueue(x.ws); });
+        const ps = lb.members.map(x => x.ws);
+        console.log(`[lobby ${lb.code}] started by ${ws.name}`);
+        createRoom(Math.random() < 0.5 ? ps : ps.slice().reverse(), lb);
+        break;
+      }
+      case 'lobbyBack': {
+        const lb = ws.lobby;
+        if (!lb) { roomError(ws, '房间已解散', 'menu'); return; }
+        if (Core.validDeck(m.deck)) ws.deck = m.deck.slice();
+        const me = lb.members.find(x => x.ws === ws); if (me) me.here = true;
+        lobbySync(lb);
+        break;
+      }
+      case 'leaveLobby': removeFromLobby(ws); break;
       case 'deploy': handleDeploy(ws, m); break;
     }
   });
-  ws.on('close', () => { removeFromQueue(ws); leaveRoom(ws, 'disconnect'); });
+  ws.on('close', () => { removeFromQueue(ws); leaveRoom(ws, 'disconnect'); removeFromLobby(ws); });
 });
 
 // 心跳：清理掉线连接

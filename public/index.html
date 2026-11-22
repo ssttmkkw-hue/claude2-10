@@ -1189,7 +1189,7 @@ function drawCardsPanel(time) {
   const gr = g.createLinearGradient(0, UI_TOP, 0, H); gr.addColorStop(0, '#3a2a63'); gr.addColorStop(1, '#170f2e');
   g.fillStyle = gr; g.fillRect(0, UI_TOP, W, H - UI_TOP);
   g.fillStyle = '#6c56a8'; g.fillRect(0, UI_TOP, W, 3); g.fillStyle = OUT; g.fillRect(0, UI_TOP + 3, W, 2);
-  if (!G || G.state === 'menu' || G.state === 'match') return;
+  if (!G || G.state === 'menu' || G.state === 'match' || G.state === 'room') return;
   const el = G.el[0];
   // 下一张
   const n = UIL.next;
@@ -1272,9 +1272,11 @@ function drawMenu(time) {
   const pb = GW * 0.56, ph = GW * 0.16, py = cy + GW * 0.68;
   const pulse = 1 + Math.sin(time * 4) * 0.025;
   g.save(); g.translate(W / 2, py + ph * 0.31); g.scale(pulse, pulse); g.translate(-W / 2, -(py + ph * 0.31));
-  button('online', W / 2 - pb / 2, py, pb, ph * 0.62, '在线匹配', 'yellow', GW * 0.058);
+  const ow = GW * 0.4, rw = GW * 0.3, rx = W / 2 - (ow + rw + GW * 0.03) / 2;
+  button('online', rx, py, ow, ph * 0.62, '在线匹配', 'yellow', GW * 0.052);
   g.restore();
-  button('play', W / 2 - pb / 2, py + ph * 0.72, pb, ph * 0.5, '人机对战', 'blue', GW * 0.045);
+  button('room', rx + ow + GW * 0.03, py, rw, ph * 0.62, '好友房间', 'purple', GW * 0.044);
+  button('play', rx, py + ph * 0.72, ow + rw + GW * 0.03, ph * 0.5, '人机对战', 'blue', GW * 0.045);
   const sb = GW * 0.3, sg = GW * 0.04, sy2 = cy + GW * 0.91;
   button('deck', W / 2 - sb - sg / 2, sy2, sb, GW * 0.09, '卡组构筑', 'purple', GW * 0.038);
   button('mute', W / 2 + sg / 2, sy2, sb, GW * 0.09, muted ? '音效：关' : '音效：开', 'gray', GW * 0.038);
@@ -1467,7 +1469,7 @@ function drawEnd(time) {
   }
   txt(g, `你 ${G.crowns[0]}  :  ${G.crowns[1]} ${G.online ? G.oppName : '电脑'}`, W / 2, cy + GW * 0.4, GW * 0.06, '#ffffff');
   if (G.endT > 0.8) {
-    button('again', W / 2 - GW * 0.28, cy + GW * 0.55, GW * 0.56, GW * 0.14, G.online ? '再次匹配' : '再来一局', 'yellow', GW * 0.06);
+    button('again', W / 2 - GW * 0.28, cy + GW * 0.55, GW * 0.56, GW * 0.14, G.lobbyCode ? '返回房间' : G.online ? '再次匹配' : '再来一局', 'yellow', GW * 0.06);
     button('menu', W / 2 - GW * 0.2, cy + GW * 0.75, GW * 0.4, GW * 0.1, '主菜单', 'blue', GW * 0.045);
   }
 }
@@ -1495,7 +1497,7 @@ function render(time) {
   drawBeams(time);
   for (const p of G.projs) drawProj(p);
   drawParticles();
-  const idle = G.state === 'menu' || G.state === 'match';
+  const idle = G.state === 'menu' || G.state === 'match' || G.state === 'room';
   if (!idle) { for (const t of G.towers) drawTowerHP(t); for (const u of G.units) drawUnitHP(u); }
   drawTexts();
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -1520,6 +1522,7 @@ function render(time) {
   }
   if (G.state === 'menu') drawMenu(time);
   if (G.state === 'match') drawMatch(time);
+  if (G.state === 'room') drawRoom(time);
   if (G.state === 'end') drawEnd(time);
 }
 
@@ -1537,35 +1540,71 @@ function netURL() {
   return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
 }
 function netSend(o) { if (NET.ws && NET.ws.readyState === 1) NET.ws.send(JSON.stringify(o)); }
-function netStartMatch() {
-  if (!deckOK(decks[deckIdx])) { openDeck('卡组需要 8 张卡才能开战'); return; }
-  if (G.online || G.state !== 'menu') { startLocal(menuDiff); }
-  G.state = 'match'; NET.t0 = performance.now(); NET.err = ''; NET.state = 'connecting';
+const CONNERR = '无法连接联机服务器。请通过 Render 部署的网址打开游戏；如果服务器刚被唤醒，等几秒再试一次。';
+// 建立/复用连接；返回错误文字（null 表示正在连接或已连接）
+function netConnect(onOpen) {
   const url = netURL();
-  if (!url) { NET.err = '当前页面无法联机：请通过 Render 部署的网址打开游戏'; NET.state = 'error'; return; }
-  if (NET.ws && NET.ws.readyState === 1) { netQueue(); return; }
+  if (!url) return '当前页面无法联机：请通过 Render 部署的网址打开游戏';
+  if (NET.ws && NET.ws.readyState === 1) { onOpen(); return null; }
+  if (NET.ws && NET.ws.readyState === 0) { NET.onOpen = onOpen; return null; }
   let ws;
-  try { ws = new WebSocket(url); } catch (e) { NET.err = '无法连接联机服务器'; NET.state = 'error'; return; }
-  NET.ws = ws;
-  ws.onopen = () => { if (NET.ws === ws) netQueue(); };
+  try { ws = new WebSocket(url); } catch (e) { return '无法连接联机服务器'; }
+  NET.ws = ws; NET.onOpen = onOpen;
+  ws.onopen = () => { if (NET.ws === ws && NET.onOpen) { const f = NET.onOpen; NET.onOpen = null; f(); } };
   ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } if (NET.ws === ws) netMsg(m); };
   ws.onerror = () => {};
   ws.onclose = () => {
     if (NET.ws !== ws) return;
-    NET.ws = null;
-    if (G.online && (G.state === 'play' || G.state === 'countdown')) { G.banners.push({ text: '连接已断开', sub: '请检查网络后重新匹配', color: '#ff8a8a', t: 0, dur: 3 }); G.state = 'end'; G.endT = 0; G.winner = -2; }
-    else if (G.state === 'match') { NET.err = '无法连接联机服务器。请通过 Render 部署的网址打开游戏；如果服务器刚被唤醒，等几秒再试一次。'; NET.state = 'error'; }
+    NET.ws = null; NET.onOpen = null; NET.lobby = null;
+    if (G.online && (G.state === 'play' || G.state === 'countdown')) { G.banners.push({ text: '连接已断开', sub: '请检查网络后重新匹配', color: '#ff8a8a', t: 0, dur: 3 }); G.state = 'end'; G.endT = 0; G.winner = -2; G.lobbyCode = null; }
+    else if (G.state === 'match') { NET.err = CONNERR; NET.state = 'error'; }
+    else if (G.state === 'room') { NET.roomErr = CONNERR; NET.rmode = NET.rmode === 'join' ? 'join' : 'menu'; }
     NET.state = 'idle';
   };
+  return null;
+}
+function netStartMatch() {
+  if (!deckOK(decks[deckIdx])) { openDeck('卡组需要 8 张卡才能开战'); return; }
+  if (G.online || G.state !== 'menu') { startLocal(menuDiff); }
+  G.state = 'match'; NET.t0 = performance.now(); NET.err = ''; NET.state = 'connecting';
+  const err = netConnect(netQueue);
+  if (err) { NET.err = err; NET.state = 'error'; }
+}
+// ---- 好友房间 ----
+function openRoom(mode = 'menu') {
+  if (!deckOK(decks[deckIdx])) { openDeck('卡组需要 8 张卡才能开战'); return; }
+  if (G.online || G.state !== 'menu') startLocal(menuDiff);
+  G.state = 'room'; NET.rmode = mode; NET.roomErr = ''; NET.lobby = null;
+  if (mode === 'join') NET.input = NET.input || '';
+}
+function roomCreate() {
+  NET.roomErr = ''; NET.rmode = 'wait';
+  const e = netConnect(() => netSend({ t: 'create', name: myName, deck: decks[deckIdx] }));
+  if (e) { NET.roomErr = e; NET.rmode = 'menu'; }
+}
+function roomJoin() {
+  if ((NET.input || '').length !== 4) { sfx('bad'); return; }
+  const code = NET.input;
+  NET.roomErr = ''; NET.rmode = 'wait';
+  const e = netConnect(() => netSend({ t: 'join', code, name: myName, deck: decks[deckIdx] }));
+  if (e) { NET.roomErr = e; NET.rmode = 'join'; }
+}
+function roomLeave() { netSend({ t: 'leaveLobby' }); NET.lobby = null; NET.rmode = 'menu'; }
+function roomBack() { startLocal(menuDiff); G.state = 'room'; NET.rmode = 'wait'; NET.roomErr = ''; netSend({ t: 'lobbyBack', deck: decks[deckIdx] }); }
+function roomCopy() {
+  if (!NET.lobby) return;
+  const link = location.origin + location.pathname + '?room=' + NET.lobby.code;
+  const ok = () => deckHint('邀请链接已复制'), bad = () => deckHint('房间号：' + NET.lobby.code);
+  try { navigator.clipboard.writeText(link).then(ok, bad); } catch (e) { bad(); }
 }
 function netQueue() { NET.state = 'queue'; NET.t0 = performance.now(); netSend({ t: 'queue', name: myName, deck: decks[deckIdx] }); }
 function netCancel() { netSend({ t: 'cancel' }); NET.state = 'idle'; startLocal(menuDiff); G.state = 'menu'; }
-function netLeave() { netSend({ t: 'leave' }); NET.state = 'idle'; startLocal(menuDiff); G.state = 'menu'; }
+function netLeave() { netSend({ t: 'leave' }); NET.state = 'idle'; NET.lobby = null; startLocal(menuDiff); G.state = 'menu'; }
 function makeView(m) {
   const v = {
     state: 'countdown', cd: 3.5, time: 180, ot: false, dbl: false, el: [5, 5], crowns: [0, 0], units: [], towers: TOWER_POS.map(makeTower),
     projs: [], parts: [], decals: [], texts: [], banners: [], shake: 0, diff: 'normal', hand: [m.hand || [], []], queue: [[m.next], []],
-    winner: -1, endT: 0, elapsed: 0, barShake: 0, online: true, oppName: m.opp || '对手', ai: { t: 99 },
+    winner: -1, endT: 0, elapsed: 0, barShake: 0, online: true, oppName: m.opp || '对手', ai: { t: 99 }, lobbyCode: m.code || null,
   };
   // 服务器塔序号 → 本地视角塔序号（队伍 1 的玩家整张地图旋转 180°）
   NET.tmap = TOWER_POS.map(p => {
@@ -1583,6 +1622,8 @@ function netMsg(m) {
     return;
   }
   if (m.t === 'oppLeft') { if (G.online) G.banners.push({ text: '对手已离开', sub: '你获得胜利', color: '#9dffb0', t: 0, dur: 2.5 }); return; }
+  if (m.t === 'lobby') { if (G.state === 'room') { NET.lobby = m; NET.rmode = 'lobby'; NET.roomErr = ''; } return; }
+  if (m.t === 'error' && m.where === 'room') { if (G.state === 'room') { NET.roomErr = m.msg || '出错了'; NET.rmode = m.back || 'menu'; NET.lobby = null; sfx('bad'); } return; }
   if (m.t === 'error') { NET.err = m.msg || '出错了'; NET.state = 'error'; return; }
   if (m.t === 's' && G.online) applySnap(G, m);
 }
@@ -1686,6 +1727,86 @@ function netTick(dt) {
   for (const t of v.texts) t.life -= dt;
   v.texts = v.texts.filter(t => t.life > 0);
 }
+function codeBoxes(g, code, cx, y, bw, active) {
+  const gap = bw * 0.22, x0 = cx - (bw * 4 + gap * 3) / 2;
+  for (let i = 0; i < 4; i++) {
+    const x = x0 + i * (bw + gap), ch = code[i];
+    g.lineWidth = 3; g.strokeStyle = OUT;
+    RR(g, x, y, bw, bw * 1.2, bw * 0.18, ch ? '#fff6d8' : 'rgba(255,255,255,0.12)');
+    if (ch) txt(g, ch, x + bw / 2, y + bw * 0.62, bw * 0.8, '#3a2a63', 'center', '#fff6d8', 1);
+    else if (active && i === code.length && Math.floor(performance.now() / 500) % 2) { g.fillStyle = '#ffd23f'; g.fillRect(x + bw * 0.25, y + bw * 0.95, bw * 0.5, bw * 0.08); }
+  }
+}
+function drawRoom(time) {
+  const g = ctx;
+  g.fillStyle = 'rgba(14,8,30,0.78)'; g.fillRect(0, 0, W, H);
+  const top = TOPY + GW * 0.12;
+  txt(g, '好友房间', W / 2, top, GW * 0.075, '#ffd23f');
+  const mode = NET.rmode;
+  const err = () => { if (NET.roomErr) { const ls = wrapText(g, NET.roomErr, GW * 0.82, GW * 0.034); ls.forEach((l, i) => ptxt(g, l, W / 2, top + GW * 0.12 + i * GW * 0.048, GW * 0.034, '#ff9a9a', 'center')); } };
+  if (mode === 'menu') {
+    err();
+    const y0 = top + GW * 0.3;
+    const lines = ['创建房间，把 4 位房间号告诉好友；', '好友输入房间号加入后，', '双方任意一人都可以开始游戏。'];
+    lines.forEach((l, i) => ptxt(g, l, W / 2, y0 + i * GW * 0.055, GW * 0.038, '#e6defc', 'center'));
+    button('rcreate', W / 2 - GW * 0.32, y0 + GW * 0.25, GW * 0.64, GW * 0.14, '创建房间', 'yellow', GW * 0.058);
+    button('rjoin', W / 2 - GW * 0.32, y0 + GW * 0.46, GW * 0.64, GW * 0.14, '输入房间号加入', 'blue', GW * 0.05);
+    button('rback', W / 2 - GW * 0.2, y0 + GW * 0.7, GW * 0.4, GW * 0.1, '返回', 'gray', GW * 0.042);
+  } else if (mode === 'join') {
+    err();
+    ptxt(g, '输入好友的房间号', W / 2, top + GW * 0.27, GW * 0.04, '#e6defc', 'center');
+    codeBoxes(g, NET.input || '', W / 2, top + GW * 0.32, GW * 0.14, true);
+    const kw = GW * 0.2, kh = GW * 0.12, kg = GW * 0.03, kx0 = W / 2 - (kw * 3 + kg * 2) / 2, ky0 = top + GW * 0.58;
+    const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clr', '0', 'del'];
+    keys.forEach((k, i) => {
+      const x = kx0 + (i % 3) * (kw + kg), y = ky0 + Math.floor(i / 3) * (kh + kg);
+      button('k' + k, x, y, kw, kh, k === 'clr' ? '清空' : k === 'del' ? '⌫' : k, k.length > 1 ? 'gray' : 'purple', k.length > 1 ? GW * 0.04 : GW * 0.065);
+    });
+    const by = ky0 + 4 * (kh + kg) + GW * 0.02;
+    button('rgo', W / 2 - GW * 0.32, by, GW * 0.4, GW * 0.12, '加入', (NET.input || '').length === 4 ? 'yellow' : 'gray', GW * 0.05);
+    button('rmenu', W / 2 + GW * 0.12, by, GW * 0.2, GW * 0.12, '返回', 'gray', GW * 0.04);
+  } else if (mode === 'wait') {
+    g.save(); g.translate(W / 2, top + GW * 0.45); g.rotate(time * 4);
+    for (let i = 0; i < 8; i++) { g.rotate(TAU / 8); dot(g, GW * 0.08, 0, GW * 0.015, `rgba(255,210,63,${0.2 + i / 10})`); }
+    g.restore();
+    txt(g, '连接中' + '.'.repeat(1 + Math.floor(time * 2) % 3), W / 2, top + GW * 0.65, GW * 0.05, '#ffffff');
+    button('rmenu', W / 2 - GW * 0.2, top + GW * 0.85, GW * 0.4, GW * 0.1, '取消', 'gray', GW * 0.042);
+  } else if (mode === 'lobby' && NET.lobby) {
+    const lb = NET.lobby;
+    ptxt(g, '房间号', W / 2, top + GW * 0.13, GW * 0.038, '#e6defc', 'center');
+    codeBoxes(g, lb.code, W / 2, top + GW * 0.18, GW * 0.15, false);
+    button('rcopy', W / 2 - GW * 0.22, top + GW * 0.39, GW * 0.44, GW * 0.08, '复制邀请链接', 'purple', GW * 0.034);
+    const sy0 = top + GW * 0.54, sw = GW * 0.8, sh = GW * 0.15;
+    for (let i = 0; i < 2; i++) {
+      const p = lb.players[i], y = sy0 + i * (sh + GW * 0.04), x = W / 2 - sw / 2;
+      g.lineWidth = 2; g.strokeStyle = 'rgba(255,255,255,0.18)';
+      g.fillStyle = p ? (p.you ? 'rgba(63,140,255,0.28)' : 'rgba(255,77,77,0.24)') : 'rgba(255,255,255,0.05)';
+      rrp(g, x, y, sw, sh, GW * 0.03); g.fill(); g.stroke();
+      if (p) {
+        g.lineWidth = 2; g.strokeStyle = OUT; C(g, x + sh * 0.5, y + sh / 2, sh * 0.32, p.you ? TEAM[0].main : TEAM[1].main);
+        drawCrown(g, x + sh * 0.5, y + sh / 2, sh * 0.14);
+        txt(g, p.name + (p.you ? '（你）' : ''), x + sh * 0.95, y + sh * 0.4, GW * 0.045, '#ffffff', 'left');
+        ptxt(g, p.here ? '✔ 已就位' : '结算中…', x + sh * 0.95, y + sh * 0.74, GW * 0.03, p.here ? '#9dffb0' : '#ffd36a');
+      } else {
+        const a = 0.5 + 0.3 * Math.sin(time * 4);
+        ptxt(g, '等待好友加入' + '.'.repeat(1 + Math.floor(time * 2) % 3), W / 2, y + sh / 2, GW * 0.04, `rgba(255,255,255,${a})`, 'center');
+      }
+    }
+    const by = sy0 + 2 * (sh + GW * 0.04) + GW * 0.03;
+    ptxt(g, lb.canStart ? '双方已就位，任意一方都可以开始' : lb.players.length < 2 ? '把房间号或邀请链接发给好友' : '等待对方回到房间…', W / 2, by, GW * 0.034, lb.canStart ? '#9dffb0' : '#b9aee0', 'center');
+    const pulse = lb.canStart ? 1 + Math.sin(time * 5) * 0.03 : 1;
+    g.save(); g.translate(W / 2, by + GW * 0.12); g.scale(pulse, pulse); g.translate(-W / 2, -(by + GW * 0.12));
+    button('rstart', W / 2 - GW * 0.3, by + GW * 0.05, GW * 0.6, GW * 0.14, '开始游戏', lb.canStart ? 'yellow' : 'gray', GW * 0.058);
+    g.restore();
+    button('rleave', W / 2 - GW * 0.2, by + GW * 0.25, GW * 0.4, GW * 0.09, '离开房间', 'gray', GW * 0.038);
+  }
+  if (DK.hintT > 0) {
+    g.globalAlpha = Math.min(1, DK.hintT * 2);
+    g.fillStyle = 'rgba(0,0,0,0.8)'; rrp(g, W / 2 - GW * 0.35, H - SAB - GW * 0.16, GW * 0.7, GW * 0.08, GW * 0.04); g.fill();
+    txt(g, DK.hint, W / 2, H - SAB - GW * 0.12, GW * 0.036, '#ffffff');
+    g.globalAlpha = 1;
+  }
+}
 function drawMatch(time) {
   const g = ctx;
   g.fillStyle = 'rgba(14,8,30,0.72)'; g.fillRect(0, 0, W, H);
@@ -1737,7 +1858,20 @@ function tryDeployAt(i, p, touch) {
 }
 function onButton(id) {
   sfx('card');
-  if (id === 'online' || (id === 'again' && G.online)) { netStartMatch(); }
+  if (id === 'again' && G.lobbyCode) { if (NET.ws && NET.ws.readyState === 1) roomBack(); else openRoom('menu'); }
+  else if (id === 'online' || (id === 'again' && G.online)) { netStartMatch(); }
+  else if (id === 'room') openRoom('menu');
+  else if (id === 'rcreate') roomCreate();
+  else if (id === 'rjoin') { NET.rmode = 'join'; NET.roomErr = ''; NET.input = ''; }
+  else if (id === 'rback') { startLocal(menuDiff); G.state = 'menu'; }
+  else if (id === 'rmenu') { if (NET.rmode === 'wait') netSend({ t: 'leaveLobby' }); NET.rmode = 'menu'; NET.roomErr = ''; }
+  else if (id === 'rgo') roomJoin();
+  else if (id === 'rstart') { if (NET.lobby && NET.lobby.canStart) netSend({ t: 'start' }); else { deckHint(NET.lobby && NET.lobby.players.length < 2 ? '还需要一名好友加入' : '等待对方就位'); sfx('bad'); } }
+  else if (id === 'rleave') roomLeave();
+  else if (id === 'rcopy') roomCopy();
+  else if (/^k[0-9]$/.test(id)) { if ((NET.input || '').length < 4) NET.input = (NET.input || '') + id[1]; NET.roomErr = ''; }
+  else if (id === 'kdel') NET.input = (NET.input || '').slice(0, -1);
+  else if (id === 'kclr') NET.input = '';
   else if (id === 'play' || id === 'again' || id === 'ai') {
     if (id === 'ai' && NET.state === 'queue') netSend({ t: 'cancel' });
     if (!deckOK(decks[deckIdx])) { if (G.state !== 'menu') { startLocal(menuDiff); } openDeck('卡组需要 8 张卡才能开战'); return; }
@@ -1804,6 +1938,12 @@ document.addEventListener('touchmove', e => e.preventDefault(), { passive: false
 document.addEventListener('contextmenu', e => e.preventDefault());
 cv.addEventListener('wheel', e => { if (G && G.state === 'deck') { DK.scroll = clamp(DK.scroll + e.deltaY, 0, DK.maxScroll); e.preventDefault(); } }, { passive: false });
 window.addEventListener('keydown', e => {
+  if (G && G.state === 'room' && NET.rmode === 'join') {
+    if (/^[0-9]$/.test(e.key) && (NET.input || '').length < 4) { NET.input = (NET.input || '') + e.key; NET.roomErr = ''; }
+    else if (e.key === 'Backspace') NET.input = (NET.input || '').slice(0, -1);
+    else if (e.key === 'Enter') roomJoin();
+    return;
+  }
   if (!G || G.state !== 'play') return;
   const n = parseInt(e.key, 10); if (n >= 1 && n <= 4) { sel = sel === n - 1 ? null : n - 1; sfx('card'); }
 });
@@ -1824,6 +1964,7 @@ loadDecks();
 layout();
 Core.hooks.sfx = sfx;
 startLocal(menuDiff); G.state = 'menu';
+{ const rq = new URLSearchParams(location.search).get('room'); if (rq && /^\d{4}$/.test(rq)) { openRoom('join'); NET.input = rq; if (G.state === 'room') roomJoin(); } }
 requestAnimationFrame(frame);
 
 // 调试/测试钩子
